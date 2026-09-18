@@ -94,13 +94,14 @@ apps/web/
 │   │       └── VerifyEmailClient.tsx
 │   ├── (app)/                 Authenticated route group
 │   │   ├── layout.tsx         Waits for AuthProvider, redirects if anon
-│   │   ├── dashboard/page.tsx Proof-of-install page
+│   │   ├── dashboard/page.tsx Train progress cards
 │   │   ├── settings/          Profile, password, email verification banner
 │   │   │   ├── page.tsx
 │   │   │   └── SettingsClient.tsx
-│   │   └── notes/             Example resource — safe to delete
-│   │       ├── page.tsx
-│   │       └── NotesClient.tsx (SWR list, create, optimistic delete)
+│   │   ├── loop-index/page.tsx
+│   │   ├── sat/page.tsx
+│   │   ├── package/page.tsx
+│   │   └── milestone/page.tsx
 │   ├── api/[...path]/         Same-origin proxy to the Laravel API
 │   ├── layout.tsx             Root layout (fonts, <Providers>)
 │   ├── providers.tsx          AuthProvider + sonner Toaster
@@ -158,23 +159,18 @@ scripts/
 
 ---
 
-## Example resource (Notes)
+## Adding a main-nav section
 
-A complete demo of the authenticated CRUD pattern. Copy as a template, or remove by deleting:
+The top bar is driven by `MAIN_NAV` in `apps/web/lib/nav.ts`. A new section needs
+three edits:
 
-**Backend**
-- `apps/api/database/migrations/*_create_notes_table.php`
-- `apps/api/app/Models/Note.php`
-- `apps/api/app/Http/Controllers/Api/V1/NoteController.php`
-- `apps/api/app/Http/Requests/Api/V1/StoreNoteRequest.php`
-- `apps/api/database/factories/NoteFactory.php`
-- `apps/api/tests/Feature/Notes/`
-- The `apiResource('notes', ...)` line in `routes/api.php`
+1. `apps/web/lib/nav.ts` — add `{ href: "/<slug>", label: "<Label>" }`.
+2. `apps/web/app/(app)/<slug>/page.tsx` — the page itself.
+3. `apps/web/middleware.ts` — add `/<slug>` to `PROTECTED_PREFIXES` **and**
+   `/<slug>/:path*` to `config.matcher`.
 
-**Frontend**
-- `apps/web/app/(app)/notes/`
-- The `/notes` entry in `PROTECTED_PREFIXES` and the `matcher` array in `apps/web/middleware.ts`
-- The `<Link href="/notes">` in `apps/web/app/(app)/layout.tsx`
+Page shells use `SHELL_X` from `lib/nav.ts` so their gutters line up with the
+top bar. It is full-bleed on purpose — wide tables get the whole viewport.
 
 ---
 

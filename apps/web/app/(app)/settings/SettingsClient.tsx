@@ -243,7 +243,7 @@ function PasswordSection() {
 
 export default function SettingsClient() {
     return (
-        <section className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-12">
+        <section className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
             <div className="flex flex-col gap-2">
                 <span className="text-xs uppercase tracking-widest text-muted-foreground">
                     Account

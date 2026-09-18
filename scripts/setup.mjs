@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Console setup for the monorepo starter.
+// Console setup for the IqraDB workspace.
 // Usage:
 //   node scripts/setup.mjs                 # interactive full setup
 //   node scripts/setup.mjs env             # rewrite env files only
