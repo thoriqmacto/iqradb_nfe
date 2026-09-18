@@ -48,16 +48,20 @@ You (the agent) are working on a **reusable Laravel + Next.js monorepo starter**
 | Thing | Where |
 |---|---|
 | New public page | `apps/web/app/(public)/<slug>/page.tsx` |
-| New authenticated page | `apps/web/app/(app)/<slug>/page.tsx` + update `PROTECTED_PREFIXES` and `config.matcher` in `middleware.ts` + add a `<Link>` in `app/(app)/layout.tsx` if it's a top-level destination |
+| New authenticated page | `apps/web/app/(app)/<slug>/page.tsx` + update `PROTECTED_PREFIXES` and `config.matcher` in `middleware.ts` + add an entry to `MAIN_NAV` in `lib/nav.ts` if it's a top-level destination |
 | New API endpoint | `apps/api/routes/api.php` (inside `v1` prefix; add to `auth:sanctum` group if protected) |
 | New controller | `apps/api/app/Http/Controllers/Api/V1/<Name>Controller.php` |
 | New form request | `apps/api/app/Http/Requests/Api/V1/<Name>Request.php` |
 | New auth method | `apps/web/lib/auth/adapters/<name>.ts` + wire in `lib/auth/index.ts` |
 | New setup prompt | `scripts/setup.mjs` (prompt helper) + add the env key to `.env.example` |
 
-## Copying the Notes example
+## CRUD pattern for a new resource
 
-`notes` is the canonical CRUD template in this repo. When building a new resource, copy that pattern end-to-end: migration with `foreignId('user_id')`, model with `$fillable` excluding `user_id`, controller that uses `$model->user()->associate($request->user())` to attach the owner, form request for validation, feature test covering 401 / index-scope / store / validation / delete-self / delete-other. On the frontend: a page in `(app)/<slug>/` using SWR for reads and `api` for writes, with optimistic deletes.
+Backend: migration with `foreignId('user_id')`, model with `$fillable` excluding `user_id`, controller that uses `$model->user()->associate($request->user())` to attach the owner, form request for validation, feature test covering 401 / index-scope / store / validation / delete-self / delete-other. Frontend: a page in `(app)/<slug>/` using SWR for reads and `api` for writes, with optimistic deletes.
+
+## Main navigation
+
+`MAIN_NAV` in `apps/web/lib/nav.ts` is the single source of truth for the top bar (Dashboard, Loop Index, SAT, Package, Milestone). Settings and Sign out live in the gear dropdown (`components/account-menu.tsx`), not in the nav. Page shells use `SHELL_X` from `lib/nav.ts` — full-bleed width, no `max-w-*`, so tables get the whole desktop viewport.
 
 ## Smoke test (for any PR you touch)
 

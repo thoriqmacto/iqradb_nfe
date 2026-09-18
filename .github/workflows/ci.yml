@@ -131,7 +131,7 @@ jobs:
         env:
           NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
           NEXT_PUBLIC_AUTH_MODE: bearer
-          NEXT_PUBLIC_APP_NAME: Starter
+          NEXT_PUBLIC_APP_NAME: IqraDB
 
       # Fails only on a new critical advisory. High advisories tied to a
       # semver-major upgrade are excluded so this job doesn't become a

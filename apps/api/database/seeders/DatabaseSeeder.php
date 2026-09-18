@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Hash;
 class DatabaseSeeder extends Seeder
 {
     /**
-     * Seed a single demo user so newcomers can try the starter immediately.
+     * Seed a single demo user so a fresh install is immediately usable.
      *
      * Credentials:
      *   email    demo@example.com

@@ -463,9 +463,6 @@ Endpoints (all JSON):
 | POST | `/api/v1/email/verification-notification` | bearer | Re-send the verify-your-email link. Throttled. |
 | GET  | `/api/v1/email/verify/{id}/{hash}` | signed URL | Email verification target. Marks user verified, redirects to `${FRONTEND_URL}/verify-email?status=verified`. |
 | POST | `/api/v1/logout` | bearer | Revokes current token. |
-| GET  | `/api/v1/notes` | bearer | Example resource — list. |
-| POST | `/api/v1/notes` | bearer | Example resource — create. |
-| DELETE | `/api/v1/notes/{id}` | bearer | Example resource — delete. |
 
 Public auth endpoints are rate-limited to `AUTH_THROTTLE_PER_MINUTE` requests per minute (default `10`), keyed by authenticated user or IP. Exceed the limit and the API responds `429`.
 
@@ -535,9 +532,11 @@ See `apps/web/.env.local.example`.
 
 ---
 
-## Example resource
+## Main navigation
 
-A small **Notes** demo (`/notes` in the web app, `/api/v1/notes` on the API) ships as the end-to-end CRUD template. It's deliberately domain-neutral — copy it when building a real resource, or delete it when you don't need it. Every Notes file has a header comment and `STRUCTURE.md` lists the full removal checklist.
+The authenticated shell has five top-level sections — Dashboard, Loop Index, SAT, Package, Milestone — driven by `MAIN_NAV` in `apps/web/lib/nav.ts`. Settings and Sign out live behind the gear button at the right of the top bar.
+
+Adding a section: see "Adding a main-nav section" in `STRUCTURE.md`.
 
 ---
 

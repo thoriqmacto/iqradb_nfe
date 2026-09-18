@@ -59,7 +59,7 @@ return [
     | Token Expiration (Hours)
     |--------------------------------------------------------------------------
     |
-    | Convenience value used by the starter's AuthController when issuing a
+    | Convenience value used by AuthController when issuing a
     | bearer token. Set to 0 or leave unset to issue tokens without an
     | explicit expiration.
     |

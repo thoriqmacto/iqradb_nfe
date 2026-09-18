@@ -9,16 +9,16 @@ class AppSetupCommand extends Command
 {
     protected $signature = 'app:setup {--mode= : local|remote} {--auth-mode= : bearer|cookie|mock} {--non-interactive}';
 
-    protected $description = 'Run the monorepo setup console (forwards to scripts/setup.mjs).';
+    protected $description = 'Run the workspace setup console (forwards to scripts/setup.mjs).';
 
     public function handle(): int
     {
-        $monorepoRoot = dirname(base_path(), 2);
-        $script = $monorepoRoot.DIRECTORY_SEPARATOR.'scripts'.DIRECTORY_SEPARATOR.'setup.mjs';
+        $workspaceRoot = dirname(base_path(), 2);
+        $script = $workspaceRoot.DIRECTORY_SEPARATOR.'scripts'.DIRECTORY_SEPARATOR.'setup.mjs';
 
         if (! is_file($script)) {
             $this->error("Setup script not found: {$script}");
-            $this->line('Run this command from inside apps/api/ of a monorepo clone.');
+            $this->line('Run this command from inside apps/api/ of a workspace clone.');
 
             return self::FAILURE;
         }
@@ -34,7 +34,7 @@ class AppSetupCommand extends Command
             $args[] = '--non-interactive';
         }
 
-        $process = new Process($args, $monorepoRoot, null, null, null);
+        $process = new Process($args, $workspaceRoot, null, null, null);
         $process->setTty(Process::isTtySupported());
         $process->run(function ($type, $buffer): void {
             $this->output->write($buffer);

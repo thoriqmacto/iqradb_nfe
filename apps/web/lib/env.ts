@@ -10,4 +10,4 @@ export const AUTH_MODE: AuthMode =
             ? "mock"
             : "bearer";
 
-export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "Starter";
+export const APP_NAME = process.env.NEXT_PUBLIC_APP_NAME ?? "IqraDB";

@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 
 export const metadata: Metadata = {
     title: APP_NAME,
-    description: `${APP_NAME} — reusable Laravel + Next.js starter.`,
+    description: `${APP_NAME} — commissioning progress tracking.`,
 };
 
 export const viewport: Viewport = {

@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AuthController;
-use App\Http\Controllers\Api\V1\NoteController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ping', fn () => response()->json([
@@ -31,9 +30,5 @@ Route::prefix('v1')->group(function () {
 
         Route::post('/email/verification-notification', [AuthController::class, 'sendVerificationEmail'])
             ->middleware('throttle:auth');
-
-        // Example resource — safe to remove. See NoteController.
-        Route::apiResource('notes', NoteController::class)
-            ->only(['index', 'store', 'destroy']);
     });
 });
