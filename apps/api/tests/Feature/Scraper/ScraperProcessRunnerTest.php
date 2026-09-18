@@ -11,6 +11,12 @@ use Tests\TestCase;
  * No browser and no SCDB credentials are involved: the commands used here fail
  * before Chromium would ever launch. What is under test is the transport — that
  * the payload reaches the worker over stdin and a JSON envelope comes back.
+ *
+ * These also pin a property worth keeping: the worker must produce a real
+ * diagnosis (`blocked_url`, `invalid_recipe`) even when playwright-core is not
+ * installed. The API CI job runs no `npm ci`, and a half-configured server is a
+ * realistic state — neither should turn a rejection into a module-resolution
+ * crash. `src/browser.mjs` loads playwright-core lazily for exactly this reason.
  */
 class ScraperProcessRunnerTest extends TestCase
 {
