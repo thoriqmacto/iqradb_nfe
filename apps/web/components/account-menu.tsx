@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogOut, Settings } from "lucide-react";
+import { LogOut, Settings, SatelliteDish } from "lucide-react";
 import { useAuth } from "@/components/auth-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -33,6 +33,12 @@ export function AccountMenu() {
                     <Link href="/settings">
                         <Settings className="size-4" />
                         Settings
+                    </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link href="/scrapper">
+                        <SatelliteDish className="size-4" />
+                        Scrapper
                     </Link>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />

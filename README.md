@@ -6,8 +6,9 @@ Laravel 12 REST API + Next.js 15 frontend, in a single npm-workspaces repository
 
 ```
 apps/
-├── api/   Laravel 12 REST API (Sanctum auth, SQLite by default)
-└── web/   Next.js 15 App Router (TypeScript, Tailwind 4, shadcn/ui)
+├── api/      Laravel 12 REST API (Sanctum auth, SQLite by default)
+├── web/      Next.js 15 App Router (TypeScript, Tailwind 4, shadcn/ui)
+└── scraper/  Playwright worker that drives SCDB (runs on the VPS only)
 ```
 
 See [`STRUCTURE.md`](STRUCTURE.md) for the directory map and where new code goes.
@@ -98,6 +99,25 @@ Adding a section: see "Adding a main-nav section" in [`STRUCTURE.md`](STRUCTURE.
 ### Dashboard
 
 Four progress cards, Train-8 through Train-11, each showing an overall percentage plus loop / SAT / package / milestone counts. **The figures are currently placeholders** defined in `apps/web/app/(app)/dashboard/page.tsx` — they will be wired to a real endpoint once the data model lands.
+
+### Scrapper
+
+`/scrapper`, reached from the gear menu, automates pulling CSV reports out of SCDB (Smart Completions). There is no REST API for that system, so retrieval is browser automation: Playwright driving headless Chromium.
+
+**Where it runs matters.** The page only configures, starts and monitors runs. The browser itself runs on the VPS, inside a Laravel queue worker. Nothing Playwright-related executes on Vercel or in the visitor's browser.
+
+```
+Laravel job → Node CLI (apps/scraper) → Chromium → SCDB
+           → CSV download → private storage → CSV parse
+           → staging rows → target adapter → transactional upsert
+```
+
+Two properties are worth knowing before you touch this code:
+
+- **Pasted Codegen is never executed.** The Scrapper page accepts Playwright Codegen output, but it is input data. A conservative parser converts recognised statements into a structured recipe; anything ambiguous is reported as unsupported rather than guessed at. There is no `eval`, `new Function`, VM, or shell path anywhere in the conversion. See `app/Services/Scraper/CodegenParser.php`.
+- **Only the configured SCDB host is reachable.** Every URL is checked against `SCDB_ALLOWED_HOSTS` before Playwright follows it — on save, and again at run time in the worker. Matching is exact, so `evil-chiyodanfe.ceccms.com` and `chiyodanfe.ceccms.com.attacker.test` both fail.
+
+See [SCRAPPER.md](SCRAPPER.md) for the recipe schema, the first-run workflow, and deployment.
 
 ---
 
@@ -263,9 +283,13 @@ npm install
 npx turbo run build --filter=web
 ```
 
-### API (VPS)
+### API + scraper (VPS)
 
 An nginx server block is provided at [`deploy/nginx/api.conf`](deploy/nginx/api.conf).
+
+The scraper needs Chromium and a dedicated queue worker on the same host — see the deployment section of [SCRAPPER.md](SCRAPPER.md) for the exact commands, the systemd unit, and the directory permissions.
+
+> The frontend does **not** need Chromium. `apps/scraper` depends on `playwright-core`, which never downloads a browser at install time, so a Vercel build stays clean without any extra configuration.
 
 Point Laravel at the deployed frontend in `apps/api/.env`:
 

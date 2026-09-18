@@ -1,6 +1,8 @@
 # CLAUDE.md — Agent guidance for this repo
 
-You (the agent) are working on a **reusable Laravel + Next.js monorepo starter**. The shipped baseline must always keep working: public `/` → `/login` or `/register` → authenticated `/dashboard` talking to a live Laravel API via bearer token.
+You (the agent) are working on **IqraDB NFE** — commissioning progress tracking for the NFE project (loop index, SAT, packages, milestones across Train-8…Train-11). Laravel 12 API + Next.js 15 frontend + a Playwright scraper worker, in one npm-workspaces repo.
+
+The shipped baseline must always keep working: public `/` → `/login` or `/register` → authenticated `/dashboard` talking to a live Laravel API via bearer token.
 
 ## Read first
 
@@ -10,6 +12,7 @@ You (the agent) are working on a **reusable Laravel + Next.js monorepo starter**
 - `apps/api/routes/api.php` — every HTTP contract lives here.
 - `apps/web/lib/auth/` — auth adapters; understand this before touching login/logout.
 - `apps/web/components/auth-provider.tsx` — one source of truth for client-side auth state.
+- `SCRAPPER.md` — SCDB scraper: architecture, recipe schema, security model, VPS deployment.
 
 ## Ground rules
 
@@ -31,7 +34,7 @@ You (the agent) are working on a **reusable Laravel + Next.js monorepo starter**
 
 ## CI
 
-- `.github/workflows/ci.yml` runs web lint/typecheck/build, api phpunit, and a setup-script smoke.
+- `.github/workflows/ci.yml` runs four jobs: `api` (phpunit), `style` (Pint), `scraper` (Node worker tests), `web` (typecheck/lint/build).
 - PHP 8.2 is the floor. Write code that works there.
 - The Laravel test runner is PHPUnit 11; phpunit.xml uses `DB_CONNECTION=sqlite` in-memory.
 
@@ -59,9 +62,23 @@ You (the agent) are working on a **reusable Laravel + Next.js monorepo starter**
 
 Backend: migration with `foreignId('user_id')`, model with `$fillable` excluding `user_id`, controller that uses `$model->user()->associate($request->user())` to attach the owner, form request for validation, feature test covering 401 / index-scope / store / validation / delete-self / delete-other. Frontend: a page in `(app)/<slug>/` using SWR for reads and `api` for writes, with optimistic deletes.
 
+## The scraper (`apps/scraper`)
+
+Playwright worker that drives SCDB. Read `SCRAPPER.md` before touching it. Non-negotiables:
+
+- **Never execute pasted Codegen.** It is input data. `CodegenParser` does anchored string matching — no `eval`, `Function`, VM, shell, or dynamic import, ever. If a statement is ambiguous, reject it; do not guess.
+- **Never widen the host allowlist in code.** `SCDB_ALLOWED_HOSTS` is the SSRF boundary and matches exactly. Both `ScdbUrlGuard` (PHP) and `src/urls.mjs` (Node) check independently — keep both.
+- **Never put secrets in argv.** The storage state goes to the worker over stdin. `ps` is world-readable.
+- **Never return the storage state.** No endpoint, no field, no debug flag. It is encrypted at rest and `$hidden`.
+- **Keep the action vocabulary closed.** Adding an action type means adding it to `RecipeValidator::ACTIONS`, `src/recipe.mjs`, and the runner's switch — all three, or it is rejected somewhere.
+- **`playwright-core`, not `playwright`.** The latter downloads Chromium in a postinstall hook, which would break the Vercel build.
+- **Do not invent domain models** for Loop Index / SAT / Package / Milestone to make an import look complete. Datasets with no adapter stop at `ready_for_mapping`.
+
+Run statuses live in `App\Enums\ScraperRunStatus` with an enforced transition table. Do not write status strings anywhere else.
+
 ## Main navigation
 
-`MAIN_NAV` in `apps/web/lib/nav.ts` is the single source of truth for the top bar (Dashboard, Loop Index, SAT, Package, Milestone). Settings and Sign out live in the gear dropdown (`components/account-menu.tsx`), not in the nav. Page shells use `SHELL_X` from `lib/nav.ts` — full-bleed width, no `max-w-*`, so tables get the whole desktop viewport.
+`MAIN_NAV` in `apps/web/lib/nav.ts` is the single source of truth for the top bar (Dashboard, Loop Index, SAT, Package, Milestone). Settings, Scrapper and Sign out live in the gear dropdown (`components/account-menu.tsx`), not in the nav — in that order, with a separator before Sign out. Page shells use `SHELL_X` from `lib/nav.ts` — full-bleed width, no `max-w-*`, so tables get the whole desktop viewport.
 
 ## Smoke test (for any PR you touch)
 
@@ -69,7 +86,8 @@ Backend: migration with `foreignId('user_id')`, model with `$fillable` excluding
 npm install
 npm run setup --non-interactive --mode=local --auth-mode=bearer
 npm run -w apps/web lint && npm run -w apps/web typecheck && npm run -w apps/web build
-cd apps/api && php artisan test
+npm run -w apps/scraper lint && npm run -w apps/scraper test
+cd apps/api && php artisan test && ./vendor/bin/pint --test
 ```
 
 All must pass. CI enforces the same matrix.

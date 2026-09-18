@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Services\Import\ImportAdapterRegistry;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -18,7 +19,16 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(ImportAdapterRegistry::class, function (): ImportAdapterRegistry {
+            $registry = new ImportAdapterRegistry;
+
+            // Register ScdbImportAdapter implementations here as the Loop
+            // Index / SAT / Package / Milestone domain models land. Until then
+            // every dataset stages its rows and stops at `ready_for_mapping`
+            // rather than guessing at a schema.
+
+            return $registry;
+        });
     }
 
     /**
