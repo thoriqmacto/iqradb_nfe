@@ -7,6 +7,7 @@ const PROTECTED_PREFIXES = [
     "/package",
     "/milestone",
     "/settings",
+    "/scrapper",
 ];
 
 export function middleware(req: NextRequest) {
@@ -34,5 +35,6 @@ export const config = {
         "/package/:path*",
         "/milestone/:path*",
         "/settings/:path*",
+        "/scrapper/:path*",
     ],
 };

@@ -6,7 +6,8 @@ Top-level:
 /
 ├── apps/
 │   ├── api/                   Laravel 12 REST API
-│   └── web/                   Next.js 15 frontend
+│   ├── web/                   Next.js 15 frontend
+│   └── scraper/               Playwright worker (SCDB automation, VPS only)
 ├── scripts/
 │   ├── setup.mjs              Interactive installer
 │   └── lib/                   Setup script modules (stdlib only)
@@ -14,6 +15,7 @@ Top-level:
 ├── turbo.json                 Turbo pipeline
 ├── package.json               npm workspaces root
 ├── README.md                  Quickstart + ops
+├── SCRAPPER.md                SCDB scraper: schema, security, deployment
 └── STRUCTURE.md               This file
 ```
 
@@ -101,7 +103,18 @@ apps/web/
 │   │   ├── loop-index/page.tsx
 │   │   ├── sat/page.tsx
 │   │   ├── package/page.tsx
-│   │   └── milestone/page.tsx
+│   │   ├── milestone/page.tsx
+│   │   └── scrapper/          SCDB automation (gear menu, not main nav)
+│   │       ├── page.tsx
+│   │       ├── ScrapperClient.tsx
+│   │       ├── SessionCard.tsx      auth state upload + validation
+│   │       ├── RecipeList.tsx       recipes + run buttons
+│   │       ├── RecipeForm.tsx
+│   │       ├── CodegenImport.tsx    paste → structured steps (never executed)
+│   │       ├── ActionList.tsx       step editor
+│   │       ├── RunHistory.tsx       polling table
+│   │       ├── RunDetail.tsx        diagnostics + CSV preview
+│   │       └── status.ts            badge variants + formatters
 │   ├── api/[...path]/         Same-origin proxy to the Laravel API
 │   ├── layout.tsx             Root layout (fonts, <Providers>)
 │   ├── providers.tsx          AuthProvider + sonner Toaster
@@ -156,6 +169,53 @@ scripts/
 ```
 
 `setup.mjs` composes these; each is individually callable.
+
+---
+
+## `apps/scraper` — Playwright worker
+
+Plain ESM JavaScript, no build step. `playwright-core` is the only dependency —
+the full `playwright` package downloads Chromium in a postinstall hook, which
+would break the Vercel build.
+
+```
+apps/scraper/
+├── bin/scraper.mjs            Entry: JSON on stdin → one JSON envelope on stdout
+├── src/
+│   ├── envelope.mjs           stdout contract + secret redaction
+│   ├── urls.mjs               Host allowlist (independent of the PHP check)
+│   ├── recipe.mjs             Closed action schema
+│   ├── locators.mjs           Descriptor → Playwright Locator
+│   ├── browser.mjs            Context lifecycle, always closed in finally
+│   ├── runner.mjs             Executes a recipe, captures the download
+│   └── session.mjs            Session validity check
+├── scripts/check-syntax.mjs   Dependency-free lint pass
+└── test/
+    ├── fixtures/download.html Local CSV-download fixture (no SCDB needed)
+    └── *.test.mjs             node:test
+```
+
+Laravel talks to it over stdin, never argv — see `SCRAPPER.md`.
+
+---
+
+## Scraper on the API side
+
+```
+apps/api/app/
+├── Enums/{ScraperRunStatus,ScraperRunMode,ImportBatchStatus}.php
+├── Jobs/{RunScraperRecipe,ProcessScraperCsv}.php
+├── Models/{ScraperSession,ScraperRecipe,ScraperRun,ImportBatch,ImportRow}.php
+├── Policies/{ScraperRecipePolicy,ScraperRunPolicy}.php
+├── Services/
+│   ├── Scraper/{ScdbUrlGuard,RecipeValidator,CodegenParser,
+│   │            ScraperProcessRunner,SessionValidator,RunPaths}.php
+│   └── Import/{CsvReader,CsvImporter,ScdbImportAdapter,
+│                ImportAdapterRegistry,ImportCounts}.php
+└── Http/Controllers/Api/V1/Scraper/{Session,Recipe,Run,Codegen}Controller.php
+```
+
+Recipes say WHAT to fetch; adapters say HOW it maps into IqraDB. Keep them apart.
 
 ---
 

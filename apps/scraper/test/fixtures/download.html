@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Report export fixture</title>
+</head>
+<body>
+    <h1>Reports</h1>
+    <label for="train">Train</label>
+    <select id="train" name="train">
+        <option value="">Choose…</option>
+        <option value="Train-8">Train-8</option>
+        <option value="Train-9">Train-9</option>
+    </select>
+
+    <!--
+        Stands in for an SCDB export button so download capture can be tested
+        without SCDB credentials. The CSV is built client-side and handed to the
+        browser as a real download, which is what exercises the
+        page.waitForEvent("download") path in src/runner.mjs.
+    -->
+    <button type="button" id="export">Export</button>
+
+    <script>
+        document.getElementById("export").addEventListener("click", () => {
+            const csv = "Loop No,Train,Status\nL-001,Train-8,Complete\nL-002,Train-8,Pending\n";
+            const blob = new Blob([csv], { type: "text/csv" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "loop-index.csv";
+            document.body.appendChild(link);
+            link.click();
+        });
+    </script>
+</body>
+</html>

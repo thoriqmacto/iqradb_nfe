@@ -1,0 +1,22 @@
+{
+  "name": "scraper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Playwright worker that drives SCDB and captures CSV downloads. Invoked by Laravel jobs on the VPS — never by the Vercel frontend.",
+  "bin": {
+    "iqradb-scraper": "bin/scraper.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "lint": "node --check bin/scraper.mjs && node scripts/check-syntax.mjs",
+    "typecheck": "echo \"No TypeScript in apps/scraper — recipe shapes are validated at runtime by src/recipe.mjs\"",
+    "install-browser": "node node_modules/playwright-core/cli.js install --with-deps chromium"
+  },
+  "dependencies": {
+    "playwright-core": "1.56.1"
+  }
+}

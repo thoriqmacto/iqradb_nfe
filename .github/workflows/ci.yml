@@ -92,6 +92,36 @@ jobs:
       - name: Check formatting
         run: ./vendor/bin/pint --test
 
+  scraper:
+    name: Scraper — Node worker tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/scraper
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        working-directory: ${{ github.workspace }}
+        run: npm ci
+
+      # No browser is installed here on purpose. The recipe-schema and
+      # URL-allowlist tests are pure logic, and the download-capture test skips
+      # itself when Chromium is absent. Live SCDB credentials never enter CI.
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
   web:
     name: Web — types, build, lint
     runs-on: ubuntu-latest
