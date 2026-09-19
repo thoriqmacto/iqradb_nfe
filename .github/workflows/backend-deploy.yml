@@ -111,16 +111,42 @@ jobs:
 
             # artisan lives in apps/api, not the repository root. DEPLOY_PATH
             # may be either the repository root or apps/api itself -- git works
-            # from either since apps/api is inside the worktree. Detect which
-            # layout we have and cd accordingly.
+            # from either since apps/api is inside the worktree. Resolve both
+            # directories: composer and artisan need apps/api, while the npm
+            # workspace install below must run from the repository root.
+            REPO_ROOT="$(git rev-parse --show-toplevel)"
+
             if [ -f artisan ]; then
-              :
+              API_DIR="$PWD"
             elif [ -f apps/api/artisan ]; then
-              cd apps/api
+              API_DIR="$PWD/apps/api"
             else
               echo "::error::No artisan found at $DEPLOY_PATH or $DEPLOY_PATH/apps/api. DEPLOY_PATH must be the repository root or the apps/api directory inside it."
               exit 1
             fi
+
+            # Node workspace dependencies.
+            #
+            # The scraper worker needs playwright-core, and npm workspaces hoist
+            # it to the repository root. Without this the API deploys fine and
+            # the Scrapper page then fails at runtime with "playwright-core is
+            # not installed" -- a failure that only shows up when someone
+            # clicks Validate session, long after the deploy reported success.
+            #
+            # --omit=dev keeps playwright-core (a production dependency of the
+            # scraper workspace) while skipping the web app's build toolchain,
+            # which the VPS never runs.
+            if [ -f "$REPO_ROOT/package-lock.json" ]; then
+              if command -v npm > /dev/null 2>&1; then
+                echo "==> Installing Node workspace dependencies"
+                ( cd "$REPO_ROOT" && npm ci --omit=dev --no-audit --no-fund )
+              else
+                echo "::error::package-lock.json is present but npm is not on PATH for $DEPLOY_USER. The scraper worker cannot run without its dependencies."
+                exit 1
+              fi
+            fi
+
+            cd "$API_DIR"
 
             # Always lift maintenance mode, including on failure. A deploy that
             # dies midway must not leave the site down indefinitely. Set after
@@ -141,8 +167,34 @@ jobs:
             php artisan view:cache
 
             # Signals long-running workers to exit after their current job so
-            # they pick up the new code.
+            # they pick up the new code. systemd (Restart=always) starts the
+            # replacement, which is what picks up new job classes.
             php artisan queue:restart
+
+            # Prove the scraper worker can still answer before calling this a
+            # success. An unknown command is rejected before Chromium would
+            # ever launch, so this needs no browser and takes milliseconds --
+            # but it does catch a broken or missing node_modules now, rather
+            # than when someone clicks Validate session tomorrow.
+            #
+            # This runs as the deploy user, so it checks module resolution, not
+            # the browser permissions of the php-fpm and queue-worker users.
+            if [ -f "$REPO_ROOT/apps/scraper/bin/scraper.mjs" ] && command -v node > /dev/null 2>&1; then
+              # The worker exits non-zero for a rejected command, which under
+              # `set -o pipefail` would abort the deploy -- hence the `|| true`.
+              SMOKE="$(printf '%s' '{"command":"__deploy_smoke__"}' \
+                | node "$REPO_ROOT/apps/scraper/bin/scraper.mjs" 2>/dev/null || true)"
+
+              case "$SMOKE" in
+                *unknown_command*)
+                  echo "==> Scraper worker responded"
+                  ;;
+                *)
+                  echo "::error::The scraper worker did not return a usable response. Check that npm ci succeeded and that node is the expected version."
+                  exit 1
+                  ;;
+              esac
+            fi
 
             echo "==> Deployed $DEPLOY_SHA"
           REMOTE

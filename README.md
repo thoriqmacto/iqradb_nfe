@@ -285,7 +285,22 @@ npx turbo run build --filter=web
 
 ### API + scraper (VPS)
 
+Deploys are automated. [`.github/workflows/backend-deploy.yml`](.github/workflows/backend-deploy.yml)
+runs after CI goes green on `main`: it SSHes to the host, checks out the exact
+commit CI validated, installs Composer and npm dependencies, migrates, rebuilds
+the caches, restarts the queue workers, and smoke-tests the scraper worker.
+Maintenance mode is lifted by a trap even if a step fails.
+
+It is gated on the `DEPLOY_ENABLED` repository variable being `"true"`, and
+needs these secrets on the `production` environment: `DEPLOY_SSH_KEY`,
+`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, optionally `DEPLOY_PORT`, and
+`DEPLOY_KNOWN_HOSTS` (without it the host key is trusted on first contact).
+
+One-time host setup it cannot do for you — Chromium, `.env`, the systemd unit,
+directory permissions — is in [SCRAPPER.md](SCRAPPER.md).
+
 An nginx server block is provided at [`deploy/nginx/api.conf`](deploy/nginx/api.conf).
+It assumes the packaged `php8.3-fpm` socket; check yours with `ls /run/php/*.sock`.
 
 The scraper needs Chromium and a dedicated queue worker on the same host — see the deployment section of [SCRAPPER.md](SCRAPPER.md) for the exact commands, the systemd unit, and the directory permissions.
 
@@ -343,4 +358,4 @@ php artisan config:cache
 - [`STRUCTURE.md`](STRUCTURE.md) — directory map and where to put new code.
 - [`CLAUDE.md`](CLAUDE.md) — conventions and ground rules for this repo.
 
-CI (`.github/workflows/ci.yml`) runs web lint/typecheck/build, Laravel tests, and Pint. PHP 8.2 is the floor.
+CI (`.github/workflows/ci.yml`) runs web lint/typecheck/build, Laravel tests on PHP 8.2 **and** 8.3, the scraper's Node tests, and Pint. 8.2 is the floor declared in `composer.json`; 8.3 is what production runs.

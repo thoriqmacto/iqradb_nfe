@@ -15,21 +15,28 @@ permissions:
 
 jobs:
   api:
-    name: API — Laravel tests
+    name: API — Laravel tests (PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: apps/api
 
+    strategy:
+      fail-fast: false
+      matrix:
+        # 8.2 is the floor declared in composer.json — testing it is what makes
+        # that declaration meaningful. 8.3 is what production actually runs, and
+        # a deprecation that only bites on the newer runtime is exactly the kind
+        # of thing a floor-only matrix ships straight to the VPS.
+        php: ['8.2', '8.3']
+
     steps:
       - uses: actions/checkout@v4
 
-      # 8.2 is the floor declared in composer.json. Testing the floor rather
-      # than the newest runtime is what makes that declaration meaningful.
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: ${{ matrix.php }}
           extensions: mbstring, sqlite3, pdo_sqlite, bcmath, intl
           coverage: none
 
@@ -37,8 +44,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: apps/api/vendor
-          key: composer-${{ runner.os }}-php8.2-${{ hashFiles('apps/api/composer.lock') }}
-          restore-keys: composer-${{ runner.os }}-php8.2-
+          key: composer-${{ runner.os }}-php${{ matrix.php }}-${{ hashFiles('apps/api/composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-php${{ matrix.php }}-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
@@ -57,7 +64,7 @@ jobs:
       # resolved for the declared floor rather than for whatever PHP the person
       # running `composer update` happens to have. Without it an update on a
       # newer machine silently pulls packages that cannot install on 8.2.
-      - name: Verify lockfile resolves for PHP 8.2
+      - name: Verify lockfile resolves for the declared platform
         run: composer check-platform-reqs
 
       - name: Audit dependencies
