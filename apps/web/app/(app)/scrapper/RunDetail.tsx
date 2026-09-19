@@ -124,7 +124,7 @@ export function RunDetail({ runId }: { runId: string }) {
             {preview && preview.headers.length > 0 && (
                 <div className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-baseline gap-2">
-                        <h4 className="text-sm font-medium">CSV preview</h4>
+                        <h4 className="text-sm font-medium">Report preview</h4>
                         <span className="text-xs text-muted-foreground">
                             {preview.headers.length} column(s)
                             {preview.total_rows !== null && `, ${preview.total_rows} row(s)`} —

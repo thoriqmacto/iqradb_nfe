@@ -37,7 +37,7 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: ${{ matrix.php }}
-          extensions: mbstring, sqlite3, pdo_sqlite, bcmath, intl
+          extensions: mbstring, sqlite3, pdo_sqlite, bcmath, intl, zip, xmlreader
           coverage: none
 
       - name: Cache Composer packages

@@ -15,19 +15,21 @@ use SplFileObject;
  *   - a UTF-8 BOM in front of the first header
  *   - CRLF line endings (READ_AHEAD + DROP_NEW_LINE leaves a stray \r)
  *   - whitespace padding around headers
- *   - duplicate header names, which would otherwise collide in an assoc array
- *   - short/long rows, which are reported rather than silently zipped
+ *
+ * Header normalisation and row alignment are shared with the XLSX reader via
+ * NormalisesHeaders, so both formats name blank columns, disambiguate
+ * duplicates, and report short or long rows identically.
  */
-class CsvReader
+class CsvReader implements TabularReader
 {
-    public const BOM = "\xEF\xBB\xBF";
+    use NormalisesHeaders;
 
     /**
      * Read the header row, normalised.
      *
      * @return list<string>
      *
-     * @throws CsvReadException
+     * @throws ReportReadException
      */
     public function headers(string $path): array
     {
@@ -35,7 +37,7 @@ class CsvReader
             return $this->normaliseHeaders($row);
         }
 
-        throw new CsvReadException('The CSV file is empty.');
+        throw new ReportReadException('The CSV file is empty.');
     }
 
     /**
@@ -47,50 +49,35 @@ class CsvReader
      *
      * @return Generator<int, array{0: int, 1: array<string, string>, 2: list<string>}>
      *
-     * @throws CsvReadException
+     * @throws ReportReadException
      */
     public function rows(string $path): Generator
     {
         $headers = null;
-        $count = $header = 0;
+        $count = 0;
 
         foreach ($this->rawRows($path) as $raw) {
             if ($headers === null) {
                 $headers = $this->normaliseHeaders($raw);
-                $header = count($headers);
 
                 continue;
             }
 
             $count++;
-            $errors = [];
-            $values = array_map(
-                static fn ($v): string => is_string($v) ? trim($v) : '',
-                $raw
-            );
+            [$values, $errors] = $this->alignRow($headers, $raw);
 
-            $actual = count($values);
-
-            if ($actual < $header) {
-                $errors[] = sprintf('Row has %d columns, expected %d.', $actual, $header);
-                $values = array_pad($values, $header, '');
-            } elseif ($actual > $header) {
-                $errors[] = sprintf('Row has %d columns, expected %d; extra values ignored.', $actual, $header);
-                $values = array_slice($values, 0, $header);
-            }
-
-            yield [$count, array_combine($headers, $values), $errors];
+            yield [$count, $values, $errors];
         }
 
         if ($headers === null) {
-            throw new CsvReadException('The CSV file is empty.');
+            throw new ReportReadException('The CSV file is empty.');
         }
     }
 
     /**
      * Count data rows without materialising them.
      *
-     * @throws CsvReadException
+     * @throws ReportReadException
      */
     public function countRows(string $path): int
     {
@@ -108,12 +95,12 @@ class CsvReader
      *
      * @return Generator<int, list<string|null>>
      *
-     * @throws CsvReadException
+     * @throws ReportReadException
      */
     private function rawRows(string $path): Generator
     {
         if (! is_file($path) || ! is_readable($path)) {
-            throw new CsvReadException('The CSV file could not be read.');
+            throw new ReportReadException('The CSV file could not be read.');
         }
 
         $file = new SplFileObject($path, 'r');
@@ -155,46 +142,5 @@ class CsvReader
 
             yield $record;
         }
-    }
-
-    public function stripBom(string $value): string
-    {
-        return str_starts_with($value, self::BOM)
-            ? substr($value, strlen(self::BOM))
-            : $value;
-    }
-
-    /**
-     * Trim headers and disambiguate duplicates so `array_combine` is safe and
-     * no column silently shadows another.
-     *
-     * @param  list<string|null>  $raw
-     * @return list<string>
-     */
-    private function normaliseHeaders(array $raw): array
-    {
-        $headers = [];
-        $seen = [];
-
-        foreach ($raw as $i => $value) {
-            $name = is_string($value) ? trim($this->stripBom($value)) : '';
-
-            if ($name === '') {
-                $name = 'column_'.($i + 1);
-            }
-
-            $key = mb_strtolower($name);
-
-            if (isset($seen[$key])) {
-                $seen[$key]++;
-                $name .= ' ('.$seen[$key].')';
-            } else {
-                $seen[$key] = 1;
-            }
-
-            $headers[] = $name;
-        }
-
-        return $headers;
     }
 }

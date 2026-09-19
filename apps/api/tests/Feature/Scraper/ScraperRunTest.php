@@ -81,11 +81,10 @@ class ScraperRunTest extends TestCase
     }
 
     /**
-     * SCDB's export wizard produces .xlsx. Downloading it is supported;
-     * importing it is not, and saying so up front beats a cryptic failure
-     * inside the CSV reader after a full browser round trip.
+     * SCDB's export wizard produces .xlsx for reports that offer no CSV, so
+     * both formats go the whole way through the pipeline.
      */
-    public function test_it_refuses_to_import_a_non_csv_recipe_but_allows_download(): void
+    public function test_an_xlsx_recipe_can_be_imported(): void
     {
         Queue::fake();
 
@@ -97,8 +96,29 @@ class ScraperRunTest extends TestCase
         Sanctum::actingAs($user);
 
         $this->postJson("/api/v1/scrapper/recipes/{$recipe->uuid}/runs", ['mode' => 'import'])
+            ->assertStatus(202);
+
+        Queue::assertPushed(RunScraperRecipe::class);
+    }
+
+    /**
+     * A format with no reader is refused up front: saying so beats a cryptic
+     * failure mid-parse after a full browser round trip.
+     */
+    public function test_it_refuses_to_import_a_format_with_no_reader_but_allows_download(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create();
+        $recipe = ScraperRecipe::factory()->create(['user_id' => $user->id]);
+        // Past the request validator on purpose: the guard has to hold for a
+        // row that reached the database by any route.
+        $recipe->forceFill(['expected_file_type' => 'pdf'])->save();
+        Sanctum::actingAs($user);
+
+        $this->postJson("/api/v1/scrapper/recipes/{$recipe->uuid}/runs", ['mode' => 'import'])
             ->assertStatus(422)
-            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'only implemented for CSV'));
+            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'cannot be parsed'));
 
         Queue::assertNothingPushed();
 
@@ -288,7 +308,7 @@ class ScraperRunTest extends TestCase
     public function test_a_download_only_run_may_complete_without_importing(): void
     {
         $this->assertTrue(ScraperRunStatus::Downloaded->canTransitionTo(ScraperRunStatus::Completed));
-        $this->assertFalse(ScraperRunMode::Download->importsCsv());
+        $this->assertFalse(ScraperRunMode::Download->importsRows());
         $this->assertTrue(ScraperRunMode::Download->capturesDownload());
         $this->assertFalse(ScraperRunMode::TestNavigation->capturesDownload());
     }

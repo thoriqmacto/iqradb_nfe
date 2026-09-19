@@ -10,7 +10,8 @@ use App\Jobs\RunScraperRecipe;
 use App\Models\ImportRow;
 use App\Models\ScraperRecipe;
 use App\Models\ScraperRun;
-use App\Services\Import\CsvReader;
+use App\Services\Import\ReportReadException;
+use App\Services\Import\TabularReaderFactory;
 use App\Services\Scraper\RunPaths;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -59,16 +60,16 @@ class RunController extends Controller
             ], 422);
         }
 
-        // Staging and upsert are built on CSV. An .xlsx download still works —
-        // it is captured, checksummed and stored — but there is no parser for
-        // it, so refuse the import mode rather than downloading and then
-        // failing inside the CSV reader with something cryptic.
-        if ($validated['mode'] === ScraperRunMode::Import->value && $recipe->expected_file_type !== 'csv') {
+        // Refuse a format with no reader up front rather than downloading and
+        // then failing mid-parse with something cryptic.
+        if ($validated['mode'] === ScraperRunMode::Import->value
+            && ! TabularReaderFactory::supports($recipe->expected_file_type)) {
             return response()->json([
                 'message' => sprintf(
-                    'Importing is only implemented for CSV, and this recipe expects .%s. '
+                    'This recipe expects .%s, which cannot be parsed. Importable formats are: %s. '
                     .'Use "Run & download" to capture the file, or change the export format in SCDB.',
                     $recipe->expected_file_type,
+                    implode(', ', TabularReaderFactory::IMPORTABLE),
                 ),
             ], 422);
         }
@@ -102,14 +103,18 @@ class RunController extends Controller
     }
 
     /**
-     * Preview the downloaded CSV: detected headers plus the first rows.
+     * Preview the downloaded report: detected headers plus the first rows.
      *
      * Reads staged rows when they exist (they are already parsed and carry
      * validation results), and falls back to reading the file directly for a
      * download-only run that was never imported.
      */
-    public function preview(Request $request, ScraperRun $run, CsvReader $reader, RunPaths $paths): JsonResponse
-    {
+    public function preview(
+        Request $request,
+        ScraperRun $run,
+        TabularReaderFactory $readers,
+        RunPaths $paths,
+    ): JsonResponse {
         $this->authorize('view', $run);
 
         $batch = $run->importBatch()->first();
@@ -147,7 +152,13 @@ class RunController extends Controller
             return response()->json(['message' => 'The downloaded file is no longer in storage.'], 404);
         }
 
-        $headers = $reader->headers($absolute);
+        try {
+            $reader = $readers->for($absolute);
+            $headers = $reader->headers($absolute);
+        } catch (ReportReadException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
         $rows = [];
 
         foreach ($reader->rows($absolute) as [$number, $values, $errors]) {

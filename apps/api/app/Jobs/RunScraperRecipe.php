@@ -168,16 +168,16 @@ class RunScraperRecipe implements ShouldQueue
                 return;
             }
 
-            $this->recordDownload($run, $paths, $result->data);
+            $this->recordDownload($run, $paths, $result->data, $recipe->expected_file_type);
 
-            if (! $run->mode->importsCsv()) {
+            if (! $run->mode->importsRows()) {
                 $run->transitionTo(ScraperRunStatus::Completed);
                 $recipe->forceFill(['last_success_run_at' => now()])->save();
 
                 return;
             }
 
-            ProcessScraperCsv::dispatch($run->uuid);
+            ProcessScraperReport::dispatch($run->uuid);
         } catch (Throwable $e) {
             Log::error('scraper.run.failed', [
                 'run' => $run->uuid,
@@ -193,12 +193,19 @@ class RunScraperRecipe implements ShouldQueue
     /**
      * @param  array<string, mixed>  $data
      */
-    private function recordDownload(ScraperRun $run, RunPaths $paths, array $data): void
-    {
+    private function recordDownload(
+        ScraperRun $run,
+        RunPaths $paths,
+        array $data,
+        string $expectedExtension,
+    ): void {
         $run->transitionTo(ScraperRunStatus::WaitingForReport);
         $run->transitionTo(ScraperRunStatus::Downloading);
 
-        $filename = $paths->sanitizeFilename((string) ($data['filename'] ?? 'report.csv'));
+        // Fall back to the recipe's own format: a default of report.csv would
+        // make an unnamed xlsx download fail the extension check downstream.
+        $fallback = 'report.'.strtolower($expectedExtension === '' ? 'csv' : $expectedExtension);
+        $filename = $paths->sanitizeFilename((string) ($data['filename'] ?? $fallback), $fallback);
         $relative = $paths->relativeDirectory($run).'/'.$filename;
 
         $run->transitionTo(ScraperRunStatus::Downloaded, [

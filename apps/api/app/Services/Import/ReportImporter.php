@@ -11,19 +11,19 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * Downloaded CSV → staged rows → (optional) transactional upsert.
+ * Downloaded report → staged rows → (optional) transactional upsert.
  *
  * The pipeline always stages. Staging is what makes an import auditable and
  * replayable, and it is the honest stopping point for a dataset that has no
  * target model yet.
  */
-class CsvImporter
+class ReportImporter
 {
     /** Rows per upsert transaction chunk. */
     private const CHUNK = 500;
 
     public function __construct(
-        private readonly CsvReader $reader,
+        private readonly TabularReaderFactory $readers,
         private readonly ImportAdapterRegistry $adapters,
     ) {}
 
@@ -45,9 +45,9 @@ class CsvImporter
     }
 
     /**
-     * Parse, stage, and import a downloaded CSV.
+     * Parse, stage, and import a downloaded report.
      *
-     * @throws CsvReadException when the file is unusable
+     * @throws ReportReadException when the file is unusable
      */
     public function import(
         ScraperRun $run,
@@ -74,7 +74,7 @@ class CsvImporter
             }
         }
 
-        $headers = $this->reader->headers($absolutePath);
+        $headers = $this->readers->for($absolutePath)->headers($absolutePath);
         $adapter = $this->adapters->get($datasetKey);
 
         $batch = $this->createBatch($run, $recipe, $absolutePath, $checksum, [
@@ -90,7 +90,7 @@ class CsvImporter
             if ($missing !== []) {
                 $batch->forceFill([
                     'status' => ImportBatchStatus::Failed,
-                    'error_message' => 'Required column(s) missing from the CSV: '.implode(', ', $missing).'.',
+                    'error_message' => 'Required column(s) missing from the report: '.implode(', ', $missing).'.',
                 ])->save();
 
                 return $batch;
@@ -149,7 +149,7 @@ class CsvImporter
         $buffer = [];
         $now = now();
 
-        foreach ($this->reader->rows($path) as [$rowNumber, $row, $rowErrors]) {
+        foreach ($this->readers->for($path)->rows($path) as [$rowNumber, $row, $rowErrors]) {
             $total++;
 
             $normalized = null;
