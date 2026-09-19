@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Switchboard</title></head>
+<body>
+    <h1>Switchboard</h1>
+    <!--
+        Stands in for SCDB's export flow, which hands off between windows:
+        switchboard -> export browser -> wizard -> download. Three plain files
+        rather than nested document.write, so the fixture stays readable.
+    -->
+    <button type="button" id="exports">Exports</button>
+    <script>
+        document.getElementById("exports").addEventListener("click", () => {
+            window.open("wizard-2-exports.html", "_blank");
+        });
+    </script>
+</body>
+</html>

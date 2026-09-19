@@ -18,7 +18,7 @@ class UpdateScraperRecipeRequest extends FormRequest
             'start_url' => ['sometimes', 'string', 'max:2048'],
             'dataset_key' => ['sometimes', 'string', 'max:64', 'regex:/^[a-z][a-z0-9_]*$/'],
             'enabled' => ['sometimes', 'boolean'],
-            'expected_file_type' => ['sometimes', 'string', 'in:csv'],
+            'expected_file_type' => ['sometimes', 'string', 'in:csv,xlsx'],
             'expected_filename_pattern' => ['nullable', 'string', 'max:255'],
             'actions' => ['sometimes', 'array', 'min:1'],
             'import_config' => ['nullable', 'array'],

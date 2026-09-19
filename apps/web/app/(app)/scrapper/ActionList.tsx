@@ -9,6 +9,11 @@ import type { RecipeAction, RecipeLocator } from "@/lib/scrapper/types";
 /** Mirrors RecipeValidator::describeLocator on the API side. */
 export function describeLocator(locator?: RecipeLocator): string {
     if (!locator) return "page";
+    const suffix = locator.hasText ? ` containing "${locator.hasText}"` : "";
+    return describeLocatorBase(locator) + suffix;
+}
+
+function describeLocatorBase(locator: RecipeLocator): string {
     switch (locator.strategy) {
         case "role":
             return locator.name ? `role=${locator.role} "${locator.name}"` : `role=${locator.role}`;
@@ -114,6 +119,11 @@ export function ActionList({ actions, onChange, failedIndex = null }: Props) {
                         {action.type === "download" && (
                             <Badge variant="info" className="shrink-0">
                                 download
+                            </Badge>
+                        )}
+                        {action.opensPopup && (
+                            <Badge variant="warning" className="shrink-0">
+                                opens window
                             </Badge>
                         )}
                         <span className="min-w-0 flex-1 truncate">{describeAction(action)}</span>

@@ -27,6 +27,9 @@ export const LOAD_STATES = ["load", "domcontentloaded", "networkidle"];
 const NEEDS_LOCATOR = new Set(["click", "fill", "selectOption", "press", "waitForVisible", "download"]);
 const NEEDS_VALUE = new Set(["fill", "selectOption", "press"]);
 
+/** SCDB's export wizard runs in popups, so a click has to be able to open one. */
+const MAY_OPEN_POPUP = new Set(["click"]);
+
 export class RecipeError extends Error {
     constructor(message, index = null) {
         super(message);
@@ -105,6 +108,13 @@ function validateAction(action, index, allowedHosts) {
         out.value = action.value;
     }
 
+    if (action.opensPopup) {
+        if (!MAY_OPEN_POPUP.has(type)) {
+            throw new RecipeError(`Action ${index} (${type}) cannot open a popup.`, index);
+        }
+        out.opensPopup = true;
+    }
+
     if (action.timeoutMs !== undefined) {
         const timeout = action.timeoutMs;
         if (!Number.isInteger(timeout) || timeout < 100 || timeout > 120000) {
@@ -144,6 +154,11 @@ function validateLocator(locator, index) {
         out.exact = locator.exact;
     }
 
+    // Picks one row out of a results grid by its content.
+    if (typeof locator.hasText === "string" && locator.hasText.trim() !== "") {
+        out.hasText = locator.hasText;
+    }
+
     if (Number.isInteger(locator.nth) && locator.nth >= 0) {
         out.nth = locator.nth;
     }
@@ -155,6 +170,12 @@ function validateLocator(locator, index) {
 export function describeLocator(locator) {
     if (!locator) return "page";
 
+    const suffix = locator.hasText ? ` containing "${locator.hasText}"` : "";
+
+    return describeLocatorBase(locator) + suffix;
+}
+
+function describeLocatorBase(locator) {
     switch (locator.strategy) {
         case "role":
             return locator.name

@@ -80,6 +80,35 @@ class ScraperRunTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    /**
+     * SCDB's export wizard produces .xlsx. Downloading it is supported;
+     * importing it is not, and saying so up front beats a cryptic failure
+     * inside the CSV reader after a full browser round trip.
+     */
+    public function test_it_refuses_to_import_a_non_csv_recipe_but_allows_download(): void
+    {
+        Queue::fake();
+
+        $user = User::factory()->create();
+        $recipe = ScraperRecipe::factory()->create([
+            'user_id' => $user->id,
+            'expected_file_type' => 'xlsx',
+        ]);
+        Sanctum::actingAs($user);
+
+        $this->postJson("/api/v1/scrapper/recipes/{$recipe->uuid}/runs", ['mode' => 'import'])
+            ->assertStatus(422)
+            ->assertJsonPath('message', fn (string $m): bool => str_contains($m, 'only implemented for CSV'));
+
+        Queue::assertNothingPushed();
+
+        // The same recipe downloads perfectly well.
+        $this->postJson("/api/v1/scrapper/recipes/{$recipe->uuid}/runs", ['mode' => 'download'])
+            ->assertStatus(202);
+
+        Queue::assertPushed(RunScraperRecipe::class);
+    }
+
     public function test_it_refuses_a_second_concurrent_run(): void
     {
         Queue::fake();

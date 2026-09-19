@@ -18,7 +18,7 @@ class StoreScraperRecipeRequest extends FormRequest
             'start_url' => ['required', 'string', 'max:2048'],
             'dataset_key' => ['required', 'string', 'max:64', 'regex:/^[a-z][a-z0-9_]*$/'],
             'enabled' => ['sometimes', 'boolean'],
-            'expected_file_type' => ['sometimes', 'string', 'in:csv'],
+            'expected_file_type' => ['sometimes', 'string', 'in:csv,xlsx'],
             'expected_filename_pattern' => ['nullable', 'string', 'max:255'],
             'actions' => ['required', 'array', 'min:1'],
             'import_config' => ['nullable', 'array'],

@@ -80,6 +80,7 @@ export type RecipeInput = {
     start_url: string;
     dataset_key: string;
     enabled?: boolean;
+    expected_file_type?: string;
     expected_filename_pattern?: string | null;
     actions: Recipe["actions"];
     codegen_source?: string | null;

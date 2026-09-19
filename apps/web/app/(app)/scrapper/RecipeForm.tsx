@@ -26,6 +26,7 @@ export function RecipeForm({ recipe, onSaved, onCancel }: Props) {
     const [startUrl, setStartUrl] = useState(recipe?.start_url ?? `${SCDB_BASE}/`);
     const [datasetKey, setDatasetKey] = useState(recipe?.dataset_key ?? "");
     const [filenamePattern, setFilenamePattern] = useState(recipe?.expected_filename_pattern ?? "");
+    const [fileType, setFileType] = useState(recipe?.expected_file_type ?? "csv");
     const [actions, setActions] = useState<RecipeAction[]>(recipe?.actions ?? []);
     const [codegenSource, setCodegenSource] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -45,6 +46,7 @@ export function RecipeForm({ recipe, onSaved, onCancel }: Props) {
                 description: description || null,
                 start_url: startUrl,
                 dataset_key: datasetKey,
+                expected_file_type: fileType,
                 expected_filename_pattern: filenamePattern || null,
                 actions,
                 ...(codegenSource ? { codegen_source: codegenSource } : {}),
@@ -124,6 +126,27 @@ export function RecipeForm({ recipe, onSaved, onCancel }: Props) {
                 <p className="text-xs text-muted-foreground">
                     Must be on the allowed SCDB host. Any other host is rejected.
                 </p>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+                <Label htmlFor="recipe-filetype">Export format</Label>
+                <select
+                    id="recipe-filetype"
+                    value={fileType}
+                    onChange={(event) => setFileType(event.target.value)}
+                    className="border-input dark:bg-input/30 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                >
+                    <option value="csv">CSV — downloaded, parsed and staged</option>
+                    <option value="xlsx">XLSX — downloaded and stored only</option>
+                </select>
+                {fileType !== "csv" && (
+                    <p className="text-xs text-muted-foreground">
+                        Importing is only implemented for CSV. An XLSX recipe can still
+                        &ldquo;Run &amp; download&rdquo; — the file is captured and checksummed —
+                        but it cannot be parsed or staged. Pick CSV in the SCDB export wizard if
+                        that option is offered.
+                    </p>
+                )}
             </div>
 
             <div className="flex flex-col gap-1.5">

