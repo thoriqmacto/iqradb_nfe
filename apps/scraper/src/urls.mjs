@@ -54,6 +54,35 @@ export function assertAllowedUrl(rawUrl, allowedHosts, allowedSchemes = ["https:
     return parsed.toString();
 }
 
+/**
+ * Strip a URL down to origin + path.
+ *
+ * SECURITY: an SSO round trip parks OAuth material in the query string
+ * (`code=`, `id_token=`, `state=`), so a raw `page.url()` captured mid-chain is
+ * a credential. Every URL this worker reports back — run diagnostics included —
+ * goes through here first.
+ */
+export function safeUrl(raw) {
+    try {
+        const url = new URL(String(raw));
+        return `${url.origin}${url.pathname}`;
+    } catch {
+        return "";
+    }
+}
+
+/** Is this URL on one of the hosts the application owns? */
+export function isAllowedHost(raw, allowedHosts) {
+    try {
+        const host = new URL(String(raw)).hostname.toLowerCase();
+        return (allowedHosts ?? [])
+            .map((h) => String(h).trim().toLowerCase())
+            .includes(host);
+    } catch {
+        return false;
+    }
+}
+
 /** Did SCDB bounce us to its login page? */
 export function looksLikeLogin(url, markers) {
     if (!url) return false;

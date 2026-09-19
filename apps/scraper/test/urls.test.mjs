@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { assertAllowedUrl, looksLikeLogin, UnsafeUrlError } from "../src/urls.mjs";
+import {
+    assertAllowedUrl,
+    isAllowedHost,
+    looksLikeLogin,
+    safeUrl,
+    UnsafeUrlError,
+} from "../src/urls.mjs";
 
 const HOSTS = ["chiyodanfe.ceccms.com"];
 
@@ -74,5 +80,70 @@ describe("looksLikeLogin", () => {
     it("handles null and malformed input", () => {
         assert.equal(looksLikeLogin(null, markers), false);
         assert.equal(looksLikeLogin("not a url", markers), false);
+    });
+});
+
+describe("safeUrl", () => {
+    it("keeps origin and path", () => {
+        assert.equal(
+            safeUrl("https://chiyodanfe.ceccms.com/Reports.aspx"),
+            "https://chiyodanfe.ceccms.com/Reports.aspx",
+        );
+    });
+
+    /**
+     * The reason this function exists. An SSO callback parks OAuth material in
+     * the query string, and the caller stores and displays whatever it gets.
+     */
+    it("strips OAuth material from an SSO callback", () => {
+        const withSecrets =
+            "https://chiyodanfe.ceccms.com/signin-oidc" +
+            "?code=0.AVQAsecret-authorization-code" +
+            "&id_token=eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.payload.signature" +
+            "&state=abc123&session_state=def456";
+
+        const cleaned = safeUrl(withSecrets);
+
+        assert.equal(cleaned, "https://chiyodanfe.ceccms.com/signin-oidc");
+        for (const secret of ["code=", "id_token=", "eyJ0eXAi", "state=", "secret"]) {
+            assert.ok(!cleaned.includes(secret), `leaked ${secret}`);
+        }
+    });
+
+    it("strips the fragment, where implicit-flow tokens live", () => {
+        assert.equal(
+            safeUrl("https://login.microsoftonline.com/common/oauth2/authorize#access_token=xyz"),
+            "https://login.microsoftonline.com/common/oauth2/authorize",
+        );
+    });
+
+    it("returns an empty string for junk rather than echoing it", () => {
+        assert.equal(safeUrl("not a url"), "");
+        assert.equal(safeUrl(null), "");
+        assert.equal(safeUrl(undefined), "");
+    });
+});
+
+describe("isAllowedHost", () => {
+    it("recognises the application's own host", () => {
+        assert.equal(isAllowedHost("https://chiyodanfe.ceccms.com/x", HOSTS), true);
+        assert.equal(isAllowedHost("https://CHIYODANFE.ceccms.com/x", HOSTS), true);
+    });
+
+    /**
+     * Sitting on the identity provider after the chain settles is how a
+     * Conditional Access or MFA challenge shows up — a different problem from
+     * an ordinary expiry, so it must be distinguishable.
+     */
+    it("recognises an identity provider as somewhere else", () => {
+        assert.equal(
+            isAllowedHost("https://login.microsoftonline.com/common/oauth2/authorize", HOSTS),
+            false,
+        );
+    });
+
+    it("is false for junk", () => {
+        assert.equal(isAllowedHost("not a url", HOSTS), false);
+        assert.equal(isAllowedHost("", HOSTS), false);
     });
 });

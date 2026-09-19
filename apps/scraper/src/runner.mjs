@@ -14,13 +14,15 @@ import { basename, join } from "node:path";
 import { withBrowserContext, executablePathFromEnv } from "./browser.mjs";
 import { buildLocator } from "./locators.mjs";
 import { describeAction, describeLocator, validateRecipe } from "./recipe.mjs";
-import { assertAllowedUrl, looksLikeLogin, UnsafeUrlError } from "./urls.mjs";
+import { assertAllowedUrl, isAllowedHost, looksLikeLogin, safeUrl, UnsafeUrlError } from "./urls.mjs";
 
 export class SessionExpiredError extends Error {
     constructor(url) {
         super("SCDB redirected to the login page.");
         this.name = "SessionExpiredError";
-        this.finalUrl = url;
+        // origin + path only: an SSO callback carries OAuth material in its
+        // query string, and this value is persisted and shown in the UI.
+        this.finalUrl = safeUrl(url);
     }
 }
 
@@ -83,9 +85,9 @@ export async function runRecipe(input) {
         async ({ page }) => {
             await page.goto(entryUrl, { waitUntil: "domcontentloaded" });
 
-            // Check immediately: if the stored state is stale, SCDB bounces to
+            // Check up front: if the stored state is stale, SCDB bounces to
             // Login.aspx and every subsequent step would fail confusingly.
-            assertAuthenticated(page, loginMarkers);
+            await assertAuthenticated(page, loginMarkers, allowedHosts);
 
             let download = null;
 
@@ -105,7 +107,10 @@ export async function runRecipe(input) {
 
                     // A mid-recipe redirect to login is an expired session, not
                     // a missing button — classify it before reporting a step error.
-                    if (looksLikeLogin(page.url(), loginMarkers)) {
+                    if (
+                        looksLikeLogin(page.url(), loginMarkers) ||
+                        !isAllowedHost(page.url(), allowedHosts)
+                    ) {
                         throw new SessionExpiredError(page.url());
                     }
 
@@ -117,10 +122,10 @@ export async function runRecipe(input) {
                 }
             }
 
-            assertAuthenticated(page, loginMarkers);
+            await assertAuthenticated(page, loginMarkers, allowedHosts);
 
             if (mode === "test_navigation") {
-                return { finalUrl: page.url(), steps: validated.length };
+                return { finalUrl: safeUrl(page.url()), steps: validated.length };
             }
 
             if (!download) {
@@ -137,13 +142,32 @@ export async function runRecipe(input) {
                 expectedExtension,
             });
 
-            return { finalUrl: page.url(), steps: validated.length, ...saved };
+            return { finalUrl: safeUrl(page.url()), steps: validated.length, ...saved };
         },
     );
 }
 
-function assertAuthenticated(page, loginMarkers) {
-    if (looksLikeLogin(page.url(), loginMarkers)) {
+/**
+ * Confirm we are on an authenticated SCDB page, allowing an SSO round trip to
+ * finish first.
+ *
+ * SCDB signs in through Microsoft Entra ID, so `Login.aspx` appears on the
+ * *successful* path as well as the failed one — the chain passes through it on
+ * the way to the identity provider and back. Checking the URL the instant a
+ * navigation reports `domcontentloaded` catches that bounce mid-flight and
+ * mistakes a healthy session for an expired one.
+ */
+async function assertAuthenticated(page, loginMarkers, allowedHosts) {
+    const settled = (url) =>
+        isAllowedHost(url, allowedHosts) && !looksLikeLogin(url, loginMarkers);
+
+    if (!settled(page.url())) {
+        await page
+            .waitForURL((url) => settled(url.toString()), { timeout: 20000 })
+            .catch(() => {});
+    }
+
+    if (!settled(page.url())) {
         throw new SessionExpiredError(page.url());
     }
 }
