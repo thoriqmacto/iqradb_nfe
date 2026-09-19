@@ -161,6 +161,50 @@ class ScraperRunTest extends TestCase
             ->assertJsonPath('data.is_terminal', false);
     }
 
+    public function test_failure_diagnostics_are_persisted_and_served(): void
+    {
+        $user = User::factory()->create();
+        $inventory = [
+            'url' => 'https://chiyodanfe.ceccms.com/Reports.aspx',
+            'title' => 'Export browser',
+            'frameCount' => 2,
+            'frames' => [
+                ['url' => 'https://chiyodanfe.ceccms.com/Reports.aspx', 'roles' => []],
+                [
+                    'url' => 'https://chiyodanfe.ceccms.com/GridFrame.aspx',
+                    'roles' => ['grid' => ['count' => 1, 'samples' => ['COMP_RPT_Redline markup']]],
+                    'links' => [['text' => 'Redline', 'href' => '/Doc.aspx?docId=44821']],
+                ],
+            ],
+        ];
+
+        $run = ScraperRun::factory()->create([
+            'user_id' => $user->id,
+            'status' => ScraperRunStatus::Queued,
+        ]);
+
+        $run->transitionTo(ScraperRunStatus::Failed, [
+            'error_code' => 'step_failed',
+            'failed_step_index' => 9,
+            'failure_diagnostics' => $inventory,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson("/api/v1/scrapper/runs/{$run->uuid}")
+            ->assertOk()
+            ->assertJsonPath('data.failed_step_index', 9)
+            ->assertJsonPath('data.failure_diagnostics.frameCount', 2)
+            ->assertJsonPath(
+                'data.failure_diagnostics.frames.1.roles.grid.samples.0',
+                'COMP_RPT_Redline markup'
+            )
+            ->assertJsonPath(
+                'data.failure_diagnostics.frames.1.links.0.href',
+                '/Doc.aspx?docId=44821'
+            );
+    }
+
     /* ------------------------------------------------------------------ *
      * State machine
      * ------------------------------------------------------------------ */

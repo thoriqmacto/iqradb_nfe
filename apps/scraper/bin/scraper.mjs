@@ -29,7 +29,7 @@ async function readStdin() {
 }
 
 /**
- * Best-effort failure diagnostics. Never throws — a screenshot that fails to
+ * Best-effort failure artifacts. Never throws — a screenshot that fails to
  * save must not replace the real error with a confusing one.
  */
 async function captureDiagnostics(error, outputDirectory) {
@@ -94,6 +94,9 @@ async function main() {
                 failure("failed", "step_failed", error.message, {
                     failedStepIndex: error.index,
                     failedAction: error.action,
+                    // What the page actually exposed, so a timeout says more
+                    // than "not found".
+                    pageInventory: error.diagnostics ?? null,
                     ...diagnostics,
                 }),
             );

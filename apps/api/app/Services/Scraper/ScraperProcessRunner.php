@@ -108,6 +108,7 @@ class ScraperProcessRunner
                 : null,
             failedStepIndex: isset($envelope['failedStepIndex']) ? (int) $envelope['failedStepIndex'] : null,
             failedAction: is_array($envelope['failedAction'] ?? null) ? $envelope['failedAction'] : null,
+            pageInventory: is_array($envelope['pageInventory'] ?? null) ? $envelope['pageInventory'] : null,
             finalUrl: isset($envelope['finalUrl']) ? (string) $envelope['finalUrl'] : null,
             exitCode: $process->getExitCode() ?? 0,
         );

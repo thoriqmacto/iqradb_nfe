@@ -17,6 +17,8 @@ class ScraperProcessResult
         public readonly ?string $errorMessage = null,
         public readonly ?int $failedStepIndex = null,
         public readonly ?array $failedAction = null,
+        /** Per-frame inventory of what the page exposed when a step failed. */
+        public readonly ?array $pageInventory = null,
         public readonly ?string $finalUrl = null,
         public readonly int $exitCode = 0,
     ) {}

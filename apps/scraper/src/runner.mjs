@@ -14,7 +14,14 @@ import { basename, join } from "node:path";
 import { withBrowserContext, executablePathFromEnv } from "./browser.mjs";
 import { buildLocator } from "./locators.mjs";
 import { describeAction, describeLocator, validateRecipe } from "./recipe.mjs";
-import { assertAllowedUrl, isAllowedHost, looksLikeLogin, safeUrl, UnsafeUrlError } from "./urls.mjs";
+import {
+    assertAllowedUrl,
+    isAllowedHost,
+    looksLikeLogin,
+    safeTarget,
+    safeUrl,
+    UnsafeUrlError,
+} from "./urls.mjs";
 
 export class SessionExpiredError extends Error {
     constructor(url) {
@@ -27,12 +34,147 @@ export class SessionExpiredError extends Error {
 }
 
 export class StepError extends Error {
-    constructor(message, index, action) {
+    constructor(message, index, action, diagnostics = null) {
         super(message);
         this.name = "StepError";
         this.index = index;
         this.action = action;
+        this.diagnostics = diagnostics;
     }
+}
+
+/** Roles worth enumerating when a locator finds nothing. */
+const DIAGNOSTIC_ROLES = [
+    "grid",
+    "table",
+    "row",
+    "link",
+    "button",
+    "textbox",
+    "combobox",
+    "listitem",
+    "cell",
+];
+
+const MAX_PER_ROLE = 12;
+const MAX_LINKS = 25;
+const MAX_FRAMES = 6;
+const MAX_LABEL = 120;
+
+/**
+ * Enumerate one frame: which roles it exposes, and what its hyperlinks point at.
+ *
+ * The link inventory is the DOM-level part. In a legacy ASP.NET grid the row a
+ * recipe needs to click is an `<a>` whose href or id carries the record key, so
+ * reporting those turns "no grid found" into a concrete `css` locator the user
+ * can paste back into the step.
+ */
+async function inventoryFrame(frame, wantedRole) {
+    const report = { url: safeUrl(frame.url()), roles: {} };
+
+    try {
+        const name = frame.name();
+        if (name) report.name = name.slice(0, MAX_LABEL);
+    } catch {
+        // Detached frame; the URL alone is still worth reporting.
+    }
+
+    // Put the role the failing step was looking for first, so a zero count for
+    // it is the first thing visible.
+    const roles = wantedRole
+        ? [wantedRole, ...DIAGNOSTIC_ROLES.filter((role) => role !== wantedRole)]
+        : DIAGNOSTIC_ROLES;
+
+    for (const role of roles) {
+        try {
+            const texts = await frame.getByRole(role).allInnerTexts();
+
+            if (texts.length === 0) continue;
+
+            report.roles[role] = {
+                count: texts.length,
+                samples: texts
+                    .slice(0, MAX_PER_ROLE)
+                    .map((text) => text.replace(/\s+/g, " ").trim().slice(0, MAX_LABEL))
+                    .filter((text) => text !== ""),
+            };
+        } catch {
+            // A role Playwright does not know, or a frame that just detached.
+        }
+    }
+
+    try {
+        const anchors = await frame.locator("a[href]").all();
+        report.linkCount = anchors.length;
+        report.links = [];
+
+        for (const anchor of anchors.slice(0, MAX_LINKS)) {
+            const [text, href, id] = await Promise.all([
+                anchor.innerText().catch(() => ""),
+                anchor.getAttribute("href").catch(() => null),
+                anchor.getAttribute("id").catch(() => null),
+            ]);
+
+            report.links.push({
+                text: String(text).replace(/\s+/g, " ").trim().slice(0, MAX_LABEL),
+                // Keeps record ids, redacts anything credential-shaped.
+                href: safeTarget(href),
+                ...(id ? { id: id.slice(0, MAX_LABEL) } : {}),
+            });
+        }
+    } catch {
+        // Navigation mid-inventory. Keep the roles already gathered.
+    }
+
+    return report;
+}
+
+/**
+ * Answer "what WAS on the page?" when a locator finds nothing.
+ *
+ * "Timed out waiting for role=grid" is unactionable on its own: it cannot
+ * distinguish a postback that had not finished, a control that renders with a
+ * different role than it did while recording, and content sitting inside an
+ * iframe — `getByRole` does not descend into frames, so a recipe locator will
+ * never see it. Walking every frame separates those three in one look.
+ *
+ * Playwright's own APIs are used here. That is not the recipe vocabulary —
+ * this is runner code reacting to a failure, and nothing in a stored recipe can
+ * reach it. No page script is evaluated: attributes come back through
+ * `getAttribute`, so there is still no path from page content to execution.
+ *
+ * Never throws: a diagnostic that fails must not replace the real error.
+ */
+async function captureFailureDiagnostics(page, action) {
+    const diagnostics = {};
+    const wantedRole = action?.locator?.strategy === "role" ? action.locator.role : null;
+
+    try {
+        diagnostics.url = safeUrl(page.url());
+        diagnostics.title = (await page.title()).slice(0, MAX_LABEL);
+    } catch {
+        // Page may already be closed; keep whatever was gathered.
+    }
+
+    let frames = [];
+    try {
+        frames = page.frames();
+    } catch {
+        frames = [];
+    }
+
+    diagnostics.frameCount = frames.length;
+    diagnostics.frames = [];
+
+    for (const frame of frames.slice(0, MAX_FRAMES)) {
+        try {
+            diagnostics.frames.push(await inventoryFrame(frame, wantedRole));
+        } catch {
+            // Frame detached between the list and the walk.
+        }
+    }
+
+    return diagnostics;
 }
 
 /** SCDB hands us the filename; treat it as untrusted input. */
@@ -128,6 +270,7 @@ export async function runRecipe(input) {
                         `Step ${index + 1}/${validated.length} failed: ${describeAction(action)} — ${shortMessage(error, action)}`,
                         index,
                         action,
+                        await captureFailureDiagnostics(current, action),
                     );
                 }
             }
@@ -145,9 +288,10 @@ export async function runRecipe(input) {
 
             if (!download) {
                 throw new StepError(
-                    "The recipe completed but captured no download. Add a `download` step on the export button.",
+                    "The recipe completed but captured no download. Mark the step that triggers the export as a download step.",
                     validated.length - 1,
                     validated.at(-1) ?? null,
+                    await captureFailureDiagnostics(current, validated.at(-1) ?? null),
                 );
             }
 

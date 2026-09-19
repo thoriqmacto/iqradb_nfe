@@ -16,6 +16,7 @@ import { RUNS_KEY, fetchPreview, fetchRun } from "@/lib/scrapper/api";
 import type { Preview, Run } from "@/lib/scrapper/types";
 
 import { describeAction } from "./ActionList";
+import { FailureDiagnostics } from "./FailureDiagnostics";
 import { formatBytes, formatDuration, formatTimestamp, runStatusVariant } from "./status";
 
 export function RunDetail({ runId }: { runId: string }) {
@@ -69,6 +70,12 @@ export function RunDetail({ runId }: { runId: string }) {
                         <p className="text-muted-foreground">
                             Failing step: <code>{describeAction(run.failed_action)}</code>
                         </p>
+                    )}
+                    {run.failure_diagnostics && (
+                        <FailureDiagnostics
+                            diagnostics={run.failure_diagnostics}
+                            failedAction={run.failed_action}
+                        />
                     )}
                     {(run.has_screenshot || run.has_trace) && (
                         <p className="flex flex-wrap gap-3 text-xs text-muted-foreground">

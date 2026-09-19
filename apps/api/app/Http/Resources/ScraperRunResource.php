@@ -37,6 +37,7 @@ class ScraperRunResource extends JsonResource
             'error_message' => $this->error_message,
             'failed_step_index' => $this->failed_step_index,
             'failed_action' => $this->failed_action,
+            'failure_diagnostics' => $this->failure_diagnostics,
             'final_url' => $this->final_url,
             'has_screenshot' => $this->screenshot_path !== null,
             'has_trace' => $this->trace_path !== null,

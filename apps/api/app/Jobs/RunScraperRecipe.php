@@ -146,6 +146,7 @@ class RunScraperRecipe implements ShouldQueue
                     $result->failedAction,
                     $this->relativeArtifact($paths, $run, $result->get('screenshot')),
                     $this->relativeArtifact($paths, $run, $result->get('trace')),
+                    $result->pageInventory,
                 );
 
                 return;
@@ -219,6 +220,7 @@ class RunScraperRecipe implements ShouldQueue
 
     /**
      * @param  array<string, mixed>|null  $failedAction
+     * @param  array<string, mixed>|null  $pageInventory
      */
     private function finishWithError(
         ScraperRun $run,
@@ -230,6 +232,7 @@ class RunScraperRecipe implements ShouldQueue
         ?array $failedAction = null,
         ?string $screenshot = null,
         ?string $trace = null,
+        ?array $pageInventory = null,
     ): void {
         if ($run->status->isTerminal()) {
             return;
@@ -240,6 +243,7 @@ class RunScraperRecipe implements ShouldQueue
             'error_message' => $message,
             'failed_step_index' => $failedStepIndex,
             'failed_action' => $failedAction,
+            'failure_diagnostics' => $pageInventory,
             'final_url' => $finalUrl,
             'screenshot_path' => $screenshot,
             'trace_path' => $trace,

@@ -107,6 +107,36 @@ export type RunImport = {
     error_message: string | null;
 };
 
+/** One hyperlink the page exposed when a step failed. */
+export type DiagnosticLink = {
+    text: string;
+    /** Query values that look like credentials are redacted worker-side. */
+    href: string;
+    id?: string;
+};
+
+export type DiagnosticFrame = {
+    url: string;
+    name?: string;
+    roles: Record<string, { count: number; samples: string[] }>;
+    linkCount?: number;
+    links?: DiagnosticLink[];
+};
+
+/**
+ * What the page actually contained when a locator timed out.
+ *
+ * Reported per frame, because `getByRole` does not descend into iframes — a
+ * role with a healthy count in frame 2 and nothing in the main frame is the
+ * signature of content a recipe locator can never reach.
+ */
+export type FailureDiagnostics = {
+    url?: string;
+    title?: string;
+    frameCount?: number;
+    frames?: DiagnosticFrame[];
+};
+
 export type Run = {
     id: string;
     recipe: { id?: string; name?: string; dataset_key?: string };
@@ -124,6 +154,7 @@ export type Run = {
     error_message: string | null;
     failed_step_index: number | null;
     failed_action: RecipeAction | null;
+    failure_diagnostics: FailureDiagnostics | null;
     final_url: string | null;
     has_screenshot: boolean;
     has_trace: boolean;
