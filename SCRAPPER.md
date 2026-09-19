@@ -249,20 +249,38 @@ Artifacts live at `storage/app/private/scraper/runs/{uuid}/`. Authentication sta
 
 Frontend deploys to Vercel and needs none of this. The API and scraper share a host.
 
+**Most of this is automated.** `.github/workflows/backend-deploy.yml` runs after
+CI goes green on `main` and handles every per-deploy step: it checks out the
+exact commit CI validated, runs `composer install` and `npm ci --omit=dev`,
+migrates, rebuilds the config/route/view caches, signals the queue workers to
+restart, and smoke-tests that the scraper worker still answers. It is gated on
+the `DEPLOY_ENABLED` repository variable being `"true"`.
+
+So steps 2, 5 and 9 below describe what the workflow already does — read them to
+understand the deploy, not to run them. **Steps 1, 3, 4, 6, 7 and 8 are one-time
+host setup** that no workflow can do for you: installing Chromium, writing
+`.env`, the systemd unit, directory permissions, and the retention cron.
+
 ### 1. Node 20+
 
 ```bash
 node --version    # must be >= 20
 ```
 
-### 2. Install workspace dependencies
+### 2. Install workspace dependencies — *automated per deploy*
 
 ```bash
-cd /var/www/iqradb_nfe
-npm ci
+cd /var/www/iqradb
+npm ci --omit=dev
 ```
 
-`apps/scraper` depends on `playwright-core`, which does **not** download a browser at install time. That is what keeps the Vercel build clean.
+The deploy workflow runs this from the repository root on every deploy. Do it by
+hand only for the very first install, before any deploy has run.
+
+`--omit=dev` keeps `playwright-core` (a production dependency of the scraper
+workspace) and skips the web app's build toolchain, which this host never runs.
+`playwright-core` does **not** download a browser at install time, which is what
+keeps the Vercel build clean — and why step 3 exists.
 
 ### 3. Install Chromium and its system libraries
 
@@ -330,7 +348,7 @@ QUEUE_CONNECTION=database        # must NOT be sync
 SCDB_BASE_URL=https://chiyodanfe.ceccms.com
 SCDB_ALLOWED_HOSTS=chiyodanfe.ceccms.com
 SCRAPER_NODE_BINARY=/usr/bin/node
-SCRAPER_APP_PATH=/var/www/iqradb_nfe/apps/scraper
+SCRAPER_APP_PATH=/var/www/iqradb/apps/scraper
 SCRAPER_QUEUE=scraper
 SCRAPER_TIMEOUT_SECONDS=300
 SCRAPER_ARTIFACT_RETENTION_DAYS=14
@@ -338,19 +356,22 @@ SCRAPER_ARTIFACT_RETENTION_DAYS=14
 
 Use an absolute `SCRAPER_NODE_BINARY`: a systemd unit does not inherit your shell's PATH.
 
-### 5. Migrate
+### 5. Migrate — *automated per deploy*
 
 ```bash
-cd /var/www/iqradb_nfe/apps/api
+cd /var/www/iqradb/apps/api
 php artisan migrate --force
 ```
+
+The deploy workflow runs this inside maintenance mode. By hand for the first
+install only.
 
 ### 6. Storage permissions
 
 ```bash
-sudo mkdir -p /var/www/iqradb_nfe/apps/api/storage/app/private/scraper
-sudo chown -R www-data:www-data /var/www/iqradb_nfe/apps/api/storage
-sudo chmod -R 750 /var/www/iqradb_nfe/apps/api/storage
+sudo mkdir -p /var/www/iqradb/apps/api/storage/app/private/scraper
+sudo chown -R www-data:www-data /var/www/iqradb/apps/api/storage
+sudo chmod -R 750 /var/www/iqradb/apps/api/storage
 ```
 
 `750`, not `755` — run artifacts are SCDB report data and must not be world-readable. Nothing under `storage/` is web-served.
@@ -369,7 +390,7 @@ User=www-data
 Group=www-data
 Restart=always
 RestartSec=5
-WorkingDirectory=/var/www/iqradb_nfe/apps/api
+WorkingDirectory=/var/www/iqradb/apps/api
 
 # One process: a single SCDB session must not be driven by two browsers at
 # once. The application also takes a per-user lock, but keeping the worker
@@ -393,7 +414,7 @@ Supervisor equivalent, if you already run it:
 
 ```ini
 [program:iqradb-scraper]
-command=/usr/bin/php /var/www/iqradb_nfe/apps/api/artisan queue:work --queue=scraper --sleep=3 --tries=1 --timeout=600
+command=/usr/bin/php /var/www/iqradb/apps/api/artisan queue:work --queue=scraper --sleep=3 --tries=1 --timeout=600
 user=www-data
 autostart=true
 autorestart=true
@@ -405,28 +426,42 @@ stopwaitsecs=630
 
 ```bash
 # crontab -e, as www-data
-0 3 * * * cd /var/www/iqradb_nfe/apps/api && php artisan scraper:prune >> /dev/null 2>&1
+0 3 * * * cd /var/www/iqradb/apps/api && php artisan scraper:prune >> /dev/null 2>&1
 ```
 
 Or add `$schedule->command('scraper:prune')->daily()` if you already run Laravel's scheduler. `--dry-run` shows what would go.
 
-### 9. Refresh caches and restart after every deploy
+### 9. Refresh caches and restart — *automated per deploy*
+
+The deploy workflow rebuilds the caches and calls `php artisan queue:restart`,
+which tells each worker to exit after its current job; systemd's
+`Restart=always` starts a replacement on the new code.
+
+**Restarting the worker is not optional.** `queue:work` holds the application in
+memory; without a restart it keeps running the previous deploy's job classes.
+That is why the workflow signals it rather than leaving it to whoever deployed.
+
+You only need this by hand after editing `.env` on the host, which no workflow
+touches:
 
 ```bash
-cd /var/www/iqradb_nfe/apps/api
-php artisan optimize:clear
-php artisan config:cache
-php artisan route:cache
-sudo systemctl restart iqradb-scraper    # picks up new job code
-sudo systemctl reload php8.2-fpm
+cd /var/www/iqradb/apps/api
+php artisan config:clear && php artisan config:cache
+sudo systemctl restart iqradb-scraper
+sudo systemctl reload php8.3-fpm
 ```
 
-**Restarting the worker is not optional.** `queue:work` holds the application in memory; without a restart it keeps running the previous deploy's job classes.
+### 10. After a `playwright-core` upgrade
+
+The deploy workflow installs npm packages but deliberately does **not** install
+browsers — that needs root and a writable `/opt/ms-playwright`. After a
+`playwright-core` version bump, redo step 3 by hand, or runs fail with
+`Executable doesn't exist`.
 
 ### Verifying the install
 
 ```bash
-cd /var/www/iqradb_nfe/apps/scraper
+cd /var/www/iqradb/apps/scraper
 echo '{"command":"unknown"}' | node bin/scraper.mjs
 # → {"ok":false,"status":"error","errorCode":"unknown_command",...}
 ```
