@@ -91,9 +91,15 @@ export async function runRecipe(input) {
 
             let download = null;
 
+            // SCDB's export wizard hands off between windows: the switchboard
+            // opens an export browser, which opens a wizard, and the file
+            // arrives in that last one. `current` is whichever window the
+            // recipe is driving right now.
+            let current = page;
+
             for (const [index, action] of validated.entries()) {
                 try {
-                    const result = await executeAction(page, action, {
+                    const result = await executeAction(current, action, {
                         allowedHosts,
                         actionTimeoutMs,
                         total: validated.length,
@@ -102,16 +108,20 @@ export async function runRecipe(input) {
                     if (result?.download) {
                         download = result.download;
                     }
+
+                    if (result?.page) {
+                        current = result.page;
+                    }
                 } catch (error) {
                     if (error instanceof SessionExpiredError) throw error;
 
                     // A mid-recipe redirect to login is an expired session, not
                     // a missing button — classify it before reporting a step error.
                     if (
-                        looksLikeLogin(page.url(), loginMarkers) ||
-                        !isAllowedHost(page.url(), allowedHosts)
+                        looksLikeLogin(current.url(), loginMarkers) ||
+                        !isAllowedHost(current.url(), allowedHosts)
                     ) {
-                        throw new SessionExpiredError(page.url());
+                        throw new SessionExpiredError(current.url());
                     }
 
                     throw new StepError(
@@ -122,10 +132,15 @@ export async function runRecipe(input) {
                 }
             }
 
-            await assertAuthenticated(page, loginMarkers, allowedHosts);
+            // Only the login check at the end: a wizard popup legitimately
+            // lives on a different path, and the up-front check already proved
+            // the session itself.
+            if (looksLikeLogin(current.url(), loginMarkers)) {
+                throw new SessionExpiredError(current.url());
+            }
 
             if (mode === "test_navigation") {
-                return { finalUrl: safeUrl(page.url()), steps: validated.length };
+                return { finalUrl: safeUrl(current.url()), steps: validated.length };
             }
 
             if (!download) {
@@ -142,7 +157,7 @@ export async function runRecipe(input) {
                 expectedExtension,
             });
 
-            return { finalUrl: safeUrl(page.url()), steps: validated.length, ...saved };
+            return { finalUrl: safeUrl(current.url()), steps: validated.length, ...saved };
         },
     );
 }
@@ -219,9 +234,23 @@ async function executeAction(page, action, { allowedHosts, actionTimeoutMs }) {
             await buildLocator(page, action.locator).waitFor({ state: "visible", timeout });
             return null;
 
-        case "click":
+        case "click": {
+            if (!action.opensPopup) {
+                await buildLocator(page, action.locator).click({ timeout });
+                return null;
+            }
+
+            // Arm the listener before clicking: the window can open and finish
+            // loading faster than the click call returns.
+            const popupPromise = page.waitForEvent("popup", { timeout });
             await buildLocator(page, action.locator).click({ timeout });
-            return null;
+            const popup = await popupPromise;
+
+            // Without this the next action can race the popup's first paint.
+            await popup.waitForLoadState("domcontentloaded").catch(() => {});
+
+            return { page: popup };
+        }
 
         case "fill":
             await buildLocator(page, action.locator).fill(action.value, { timeout });

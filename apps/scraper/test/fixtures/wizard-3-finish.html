@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Wizard</title></head>
+<body>
+    <h1>Export Wizard</h1>
+    <button type="button" id="next">Next</button>
+    <button type="button" id="finish">Finish</button>
+    <script>
+        document.getElementById("finish").addEventListener("click", () => {
+            const csv = "Tag,Status\nT-1,Open\nT-2,Closed\n";
+            const blob = new Blob([csv], { type: "text/csv" });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "redline.csv";
+            document.body.appendChild(link);
+            link.click();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Export browser</title></head>
+<body>
+    <h1>Saved Exports</h1>
+    <!-- Two rows: picking the right one is what `hasText` is for. -->
+    <div role="grid">
+        <div role="row" data-report="other">COMP_RPT_Other report</div>
+        <div role="row" data-report="redline">COMP_RPT_Redline markup</div>
+    </div>
+    <script>
+        document.querySelectorAll('[role="row"]').forEach((row) => {
+            row.addEventListener("click", () => {
+                window.open("wizard-3-finish.html", "_blank");
+            });
+        });
+    </script>
+</body>
+</html>

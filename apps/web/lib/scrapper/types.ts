@@ -29,6 +29,8 @@ export type RecipeLocator = {
     css?: string;
     exact?: boolean;
     nth?: number;
+    /** Narrows a grid to the row carrying this text. */
+    hasText?: string;
 };
 
 export type RecipeActionType =
@@ -49,6 +51,8 @@ export type RecipeAction = {
     url?: string;
     state?: "load" | "domcontentloaded" | "networkidle";
     timeoutMs?: number;
+    /** This click opens a new window; the rest of the recipe runs in it. */
+    opensPopup?: boolean;
 };
 
 export type Recipe = {

@@ -36,6 +36,15 @@ class RecipeValidator
     /** Actions that address an element and therefore require a locator. */
     private const NEEDS_LOCATOR = ['click', 'fill', 'selectOption', 'press', 'waitForVisible', 'download'];
 
+    /**
+     * Actions that may open a popup window.
+     *
+     * SCDB's export wizard runs entirely in popups: the main page opens one,
+     * that one opens another, and the download happens in the last. A recipe
+     * has to be able to say "this click opens a window, carry on in there".
+     */
+    private const MAY_OPEN_POPUP = ['click'];
+
     /** Actions that carry a user-supplied value. */
     private const NEEDS_VALUE = ['fill', 'selectOption', 'press'];
 
@@ -178,6 +187,23 @@ class RecipeValidator
             $out['value'] = $value;
         }
 
+        if (isset($action['opensPopup']) && $action['opensPopup'] !== false) {
+            if (! in_array($type, self::MAY_OPEN_POPUP, true)) {
+                $this->fail($field, sprintf(
+                    'Action %d (%s) cannot open a popup. Only %s can.',
+                    $index,
+                    $type,
+                    implode(', ', self::MAY_OPEN_POPUP)
+                ));
+            }
+
+            if (! is_bool($action['opensPopup'])) {
+                $this->fail($field, "Action {$index} opensPopup must be a boolean.");
+            }
+
+            $out['opensPopup'] = true;
+        }
+
         if (isset($action['timeoutMs'])) {
             $timeout = $action['timeoutMs'];
 
@@ -252,6 +278,20 @@ class RecipeValidator
             $out['exact'] = $locator['exact'];
         }
 
+        // Picks one row out of a results grid by its content — how a report is
+        // chosen from a search result, without depending on row order.
+        if (isset($locator['hasText'])) {
+            if (! is_string($locator['hasText']) || trim($locator['hasText']) === '') {
+                $this->fail($field, "Action {$index} locator hasText must be a non-empty string.");
+            }
+
+            if (mb_strlen($locator['hasText']) > 300) {
+                $this->fail($field, "Action {$index} locator hasText is too long.");
+            }
+
+            $out['hasText'] = $locator['hasText'];
+        }
+
         // Disambiguates "the 3rd matching row" without needing a CSS selector.
         if (isset($locator['nth'])) {
             if (! is_int($locator['nth']) || $locator['nth'] < 0 || $locator['nth'] > 200) {
@@ -279,6 +319,10 @@ class RecipeValidator
             return 'page';
         }
 
+        $suffix = isset($locator['hasText'])
+            ? sprintf(' containing "%s"', $locator['hasText'])
+            : '';
+
         return match ($locator['strategy'] ?? null) {
             'role' => isset($locator['name'])
                 ? sprintf('role=%s named "%s"', $locator['role'], $locator['name'])
@@ -289,6 +333,6 @@ class RecipeValidator
             'testId' => sprintf('test id "%s"', $locator['testId']),
             'css' => sprintf('css "%s"', $locator['css']),
             default => 'element',
-        };
+        }.$suffix;
     }
 }

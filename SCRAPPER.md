@@ -101,6 +101,9 @@ Stored in `scraper_recipes.actions`, validated on save by `RecipeValidator` and 
 | `waitForVisible` | `locator` | Prefer this over `networkidle` on SCDB. |
 | `download` | `locator` | Arms the download listener, **then** clicks. |
 
+A `click` also accepts `"opensPopup": true`, which is how a recipe moves between
+windows — see below.
+
 Every action accepts an optional `timeoutMs` (100–120000).
 
 ### Locator strategies
@@ -116,7 +119,30 @@ Preference order, most robust first:
 | `testId` | `{ "strategy": "testId", "testId": "export-btn" }` |
 | `css` | `{ "strategy": "css", "css": "#ctl00_Main_btnExport" }` |
 
-All accept `nth` to disambiguate. Prefer role/label/text: generated ASP.NET IDs like `ctl00_ContentPlaceHolder1_gvReports_ctl02_btnExport` change whenever the page structure is edited.
+All accept `nth` to disambiguate, and `hasText` to narrow a grid to the row
+carrying a given string — which is how a report is picked out of search results
+without depending on row order. Prefer role/label/text: generated ASP.NET IDs like `ctl00_ContentPlaceHolder1_gvReports_ctl02_btnExport` change whenever the page structure is edited.
+
+### Popup windows
+
+SCDB's export flow hands off between windows: the switchboard opens an export
+browser, that opens a wizard, and the file arrives in the wizard. A recipe
+follows the chain by flagging the click that opens each window:
+
+```jsonc
+{ "type": "click",
+  "opensPopup": true,
+  "locator": { "strategy": "role", "role": "button", "name": "Exports" } }
+```
+
+Every action after that runs in the new window until another `opensPopup` moves
+on again. Codegen records the handoff as a `waitForEvent('popup')` sandwich and
+the importer recognises it, so pasted recordings get the flag automatically.
+
+The same applies to the download: Codegen wraps the final click in a
+`waitForEvent('download')` sandwich, and the importer turns that click into a
+`download` step — no need to press **Make download** by hand for a pasted
+recording.
 
 ---
 
@@ -191,6 +217,11 @@ To add one when a real model lands:
 Nothing else changes — the pipeline picks it up by `datasetKey()`.
 
 Guarantees the importer already provides, all covered by `tests/Feature/Scraper/CsvImportTest.php`:
+
+> **CSV only.** Staging and upsert are built on CSV. A recipe whose export
+> format is `xlsx` can still *download* — the file is captured, checksummed and
+> stored — but "Run, download & import" is refused up front rather than failing
+> inside the parser. If SCDB's export wizard offers a CSV format, choose it.
 
 - **Idempotent.** Re-importing identical data reports `unchanged`, not duplicates.
 - **Transactional.** An adapter throwing mid-chunk rolls the chunk back; staged rows survive for diagnosis.

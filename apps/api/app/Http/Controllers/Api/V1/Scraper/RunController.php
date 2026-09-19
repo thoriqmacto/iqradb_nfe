@@ -59,6 +59,20 @@ class RunController extends Controller
             ], 422);
         }
 
+        // Staging and upsert are built on CSV. An .xlsx download still works —
+        // it is captured, checksummed and stored — but there is no parser for
+        // it, so refuse the import mode rather than downloading and then
+        // failing inside the CSV reader with something cryptic.
+        if ($validated['mode'] === ScraperRunMode::Import->value && $recipe->expected_file_type !== 'csv') {
+            return response()->json([
+                'message' => sprintf(
+                    'Importing is only implemented for CSV, and this recipe expects .%s. '
+                    .'Use "Run & download" to capture the file, or change the export format in SCDB.',
+                    $recipe->expected_file_type,
+                ),
+            ], 422);
+        }
+
         // One in-flight run per user: the browser lock would serialise them
         // anyway, and a queue of stale runs helps nobody.
         $active = ScraperRun::where('user_id', $request->user()->id)

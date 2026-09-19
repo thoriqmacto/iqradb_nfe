@@ -11,7 +11,7 @@
  * @param {object} descriptor
  */
 export function buildLocator(page, descriptor) {
-    const { strategy, exact, nth } = descriptor;
+    const { strategy, exact, nth, hasText } = descriptor;
     let locator;
 
     switch (strategy) {
@@ -45,6 +45,12 @@ export function buildLocator(page, descriptor) {
             // validateRecipe already rejected anything else; this is a guard
             // against a future strategy being added without a case here.
             throw new Error(`Unsupported locator strategy "${strategy}".`);
+    }
+
+    // `.filter({ hasText })` narrows a grid to the row carrying a given
+    // report name — order-independent, unlike nth().
+    if (typeof hasText === "string" && hasText !== "") {
+        locator = locator.filter({ hasText });
     }
 
     return typeof nth === "number" ? locator.nth(nth) : locator;
