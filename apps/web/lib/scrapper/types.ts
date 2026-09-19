@@ -8,12 +8,29 @@
 
 export type SessionStatus = "unknown" | "valid" | "expired" | "invalid" | "error";
 
+/**
+ * When the stored authentication file runs out, derived from its cookies.
+ *
+ * Counts and dates only — the API never returns a cookie name, value or domain.
+ */
+export type SessionCookies = {
+    /** Latest persistent cookie expiry: after this nothing in the file works. */
+    expires_at: string | null;
+    /** Earliest persistent expiry, for when the two are far apart. */
+    first_expiry_at: string | null;
+    cookies: number;
+    persistent_cookies: number;
+    /** Cookies that died with the recording browser, re-minted by silent SSO. */
+    session_cookies: number;
+};
+
 export type ScrapperSession = {
     host: string;
     status: SessionStatus;
     last_validated_at: string | null;
     last_validation_error: string | null;
     updated_at: string | null;
+    cookies: SessionCookies | null;
 };
 
 export type LocatorStrategy = "role" | "label" | "text" | "placeholder" | "testId" | "css";

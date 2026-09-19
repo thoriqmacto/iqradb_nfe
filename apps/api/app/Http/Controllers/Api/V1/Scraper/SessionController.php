@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\Scraper\StoreScraperSessionRequest;
 use App\Models\ScraperSession;
 use App\Services\Scraper\SessionValidator;
+use App\Services\Scraper\StorageStateSummary;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -95,12 +96,19 @@ class SessionController extends Controller
             return null;
         }
 
+        // Derived on read rather than stored: the storage state is already
+        // loaded here, and a column would need backfilling and could drift out
+        // of step with the blob it describes.
+        $cookies = app(StorageStateSummary::class)->summarize($session->storage_state);
+
         return [
             'host' => $session->host,
             'status' => $session->status,
             'last_validated_at' => $session->last_validated_at?->toIso8601String(),
             'last_validation_error' => $session->last_validation_error,
             'updated_at' => $session->updated_at?->toIso8601String(),
+            // Counts and dates only — never a cookie name, value or domain.
+            'cookies' => $cookies,
         ];
     }
 }

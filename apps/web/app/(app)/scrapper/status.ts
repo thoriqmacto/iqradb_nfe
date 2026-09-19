@@ -68,3 +68,35 @@ export function formatBytes(bytes: number | null): string {
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/** Whole days from now until an ISO timestamp; negative once it has passed. */
+export function daysUntil(value: string | null): number | null {
+    if (!value) return null;
+    const target = new Date(value).getTime();
+    if (Number.isNaN(target)) return null;
+    return Math.floor((target - Date.now()) / 86_400_000);
+}
+
+/** Renew-by urgency for the stored authentication file. */
+export type ExpiryUrgency = "unknown" | "gone" | "soon" | "ok";
+
+/** Fewer than this many days left is worth warning about. */
+export const RENEW_WARNING_DAYS = 7;
+
+export function expiryUrgency(expiresAt: string | null): ExpiryUrgency {
+    const days = daysUntil(expiresAt);
+    if (days === null) return "unknown";
+    if (days < 0) return "gone";
+    return days <= RENEW_WARNING_DAYS ? "soon" : "ok";
+}
+
+export function formatExpiry(expiresAt: string | null): string {
+    const days = daysUntil(expiresAt);
+    if (days === null) return "—";
+
+    const when = new Date(expiresAt as string).toLocaleDateString();
+
+    if (days < 0) return `${when} (${Math.abs(days)} day(s) ago)`;
+    if (days === 0) return `${when} (today)`;
+    return `${when} (in ${days} day(s))`;
+}
