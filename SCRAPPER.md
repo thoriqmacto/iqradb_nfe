@@ -266,19 +266,60 @@ npm ci
 
 ### 3. Install Chromium and its system libraries
 
-```bash
-cd /var/www/iqradb_nfe/apps/scraper
-npm run install-browser
-```
-
-That runs `node node_modules/playwright-core/cli.js install --with-deps chromium`. `--with-deps` needs root, so on a locked-down host run the deps step separately as root:
+Run this from the **repo root**, not from `apps/scraper`:
 
 ```bash
-sudo node node_modules/playwright-core/cli.js install-deps chromium
-node node_modules/playwright-core/cli.js install chromium
+cd /var/www/iqradb
+sudo PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+  npm run -w apps/scraper install-browser
 ```
 
-Browsers land in `~/.cache/ms-playwright` for the user running the command. If the queue worker runs as a different user, either install as that user or set `PLAYWRIGHT_BROWSERS_PATH` to a shared readable path in both places.
+> npm workspaces **hoist** dependencies to the repo root, so `playwright-core`
+> lives in `/var/www/iqradb/node_modules`, not `apps/scraper/node_modules`. A
+> command like `node node_modules/playwright-core/cli.js …` run from inside
+> `apps/scraper` fails with `MODULE_NOT_FOUND`. Going through `npm run` avoids
+> the problem entirely: npm puts every ancestor's `node_modules/.bin` on `PATH`.
+
+`--with-deps` installs system libraries through apt and therefore needs root. If
+your host forbids that, split it — deps as root, browser as the deploy user:
+
+```bash
+cd /var/www/iqradb
+sudo npm exec -w apps/scraper -- playwright-core install-deps chromium
+sudo PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+  npm run -w apps/scraper install-browser:no-deps
+```
+
+Equivalent without npm, also from the repo root:
+
+```bash
+cd /var/www/iqradb
+sudo PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+  node node_modules/playwright-core/cli.js install --with-deps chromium
+```
+
+**Two processes need the browser, not one.** Queued runs happen in the queue
+worker, but **session validation runs inline in the web request** — so php-fpm's
+user launches Chromium too. If php-fpm and the worker run as different users,
+the default per-user cache (`~/.cache/ms-playwright`) will work for one and fail
+for the other.
+
+The reliable arrangement is a shared install:
+
+```bash
+sudo mkdir -p /opt/ms-playwright
+cd /var/www/iqradb
+sudo PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright \
+  npm run -w apps/scraper install-browser
+sudo chmod -R a+rX /opt/ms-playwright
+```
+
+Then set `PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright` in `apps/api/.env`.
+
+Set it in `.env`, **not** only as a shell variable: the runner reads it through
+config, which survives `php artisan config:cache`. A plain shell export does not
+— config caching stops Laravel loading `.env` at all, and a value read only via
+`getenv()` would disappear in production.
 
 ### 4. Configure
 
@@ -400,7 +441,10 @@ A JSON envelope back means Node, the CLI and the module graph are fine. Then use
 |---|---|
 | `worker_missing` | `SCRAPER_APP_PATH` is wrong, or `npm ci` was not run on the server. |
 | Run stuck in `queued` | The `scraper` queue worker is not running, or `QUEUE_CONNECTION=sync`. |
-| `Executable doesn't exist` | Chromium not installed for the worker's user. See step 3. |
+| `Executable doesn't exist` | Chromium not installed for the user that launched it — remember php-fpm validates sessions while the worker executes runs. Use the shared `PLAYWRIGHT_BROWSERS_PATH` install in step 3. |
+| `playwright-core is not installed` | `npm ci` has not run on the server, or it ran somewhere other than `SCRAPER_APP_PATH`. |
+| `MODULE_NOT_FOUND` for `apps/scraper/node_modules/playwright-core/cli.js` | Workspace dependencies are hoisted to the repo root. Run the install from `/var/www/iqradb`, or use `npm run -w apps/scraper install-browser`. |
+| Validate session times out in the browser | Chromium cold start plus an SCDB round trip can exceed nginx's `proxy_read_timeout` (60s default). Validation is synchronous by design; raise that timeout or retry. |
 | `session_expired` on every run | Stored state is stale. Re-record and re-upload. |
 | `Step 5/8 failed: … timed out waiting for role=button named "Export"` | SCDB markup changed. Re-record that step. |
 | `busy` | Another run holds the user's lock. Wait for it. |
