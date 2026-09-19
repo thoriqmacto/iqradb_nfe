@@ -80,6 +80,45 @@ class ScraperProcessRunnerTest extends TestCase
         $this->assertSame('invalid_recipe', $result->errorCode);
     }
 
+    /**
+     * The browser location must survive `php artisan config:cache`.
+     *
+     * Config caching stops Laravel loading .env, so a PLAYWRIGHT_BROWSERS_PATH
+     * read only through getenv() would silently vanish in production — the
+     * worker would then report a missing browser for one that is installed.
+     */
+    public function test_the_browser_path_reaches_the_worker_from_config(): void
+    {
+        config()->set('scraper.browsers_path', '/opt/ms-playwright');
+        config()->set('scraper.chromium_executable', '/opt/ms-playwright/chromium/headless_shell');
+
+        $runner = app(ScraperProcessRunner::class);
+        $method = new \ReflectionMethod($runner, 'childEnvironment');
+        $env = $method->invoke($runner);
+
+        $this->assertSame('/opt/ms-playwright', $env['PLAYWRIGHT_BROWSERS_PATH']);
+        $this->assertSame(
+            '/opt/ms-playwright/chromium/headless_shell',
+            $env['PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'],
+        );
+    }
+
+    /** Nothing configured and nothing exported means the key is simply absent. */
+    public function test_an_unset_browser_path_is_omitted(): void
+    {
+        config()->set('scraper.browsers_path', null);
+        config()->set('scraper.chromium_executable', null);
+        putenv('PLAYWRIGHT_BROWSERS_PATH');
+        putenv('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH');
+
+        $runner = app(ScraperProcessRunner::class);
+        $method = new \ReflectionMethod($runner, 'childEnvironment');
+        $env = $method->invoke($runner);
+
+        $this->assertArrayNotHasKey('PLAYWRIGHT_BROWSERS_PATH', $env);
+        $this->assertArrayNotHasKey('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH', $env);
+    }
+
     public function test_a_missing_worker_is_reported_rather_than_thrown(): void
     {
         config()->set('scraper.app_path', '/nonexistent/scraper');

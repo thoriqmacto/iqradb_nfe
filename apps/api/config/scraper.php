@@ -51,6 +51,20 @@ return [
 
     'app_path' => env('SCRAPER_APP_PATH', dirname(base_path()).'/scraper'),
 
+    /*
+    | Where Chromium lives, when it is not in the default per-user cache
+    | (~/.cache/ms-playwright). Read through config rather than getenv() in the
+    | runner on purpose: with `php artisan config:cache` in production Laravel
+    | never loads .env, so getenv() would come back empty and the worker would
+    | fail to find a browser that is sitting right there.
+    |
+    | Set PLAYWRIGHT_BROWSERS_PATH when php-fpm and the queue worker run as
+    | different users and need to share one browser install.
+    */
+    'browsers_path' => env('PLAYWRIGHT_BROWSERS_PATH'),
+
+    'chromium_executable' => env('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'),
+
     'timeout_seconds' => (int) env('SCRAPER_TIMEOUT_SECONDS', 300),
 
     'navigation_timeout_ms' => (int) env('SCRAPER_NAVIGATION_TIMEOUT_MS', 30000),

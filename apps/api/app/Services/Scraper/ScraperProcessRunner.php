@@ -129,10 +129,25 @@ class ScraperProcessRunner
             'NODE_ENV' => 'production',
         ];
 
-        foreach (['PLAYWRIGHT_BROWSERS_PATH', 'PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'] as $key) {
-            $value = getenv($key);
+        // Config first, real process environment second.
+        //
+        // getenv() alone is not enough: `php artisan config:cache` stops
+        // Laravel loading .env at all, so a PLAYWRIGHT_BROWSERS_PATH set there
+        // would vanish in production and the worker would report "Executable
+        // doesn't exist" for a browser that is installed. Config survives
+        // caching; the getenv() fallback still honours a variable exported by
+        // systemd or the php-fpm pool.
+        $paths = [
+            'PLAYWRIGHT_BROWSERS_PATH' => config('scraper.browsers_path'),
+            'PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH' => config('scraper.chromium_executable'),
+        ];
 
-            if ($value !== false && $value !== '') {
+        foreach ($paths as $key => $configured) {
+            $value = is_string($configured) && $configured !== ''
+                ? $configured
+                : getenv($key);
+
+            if (is_string($value) && $value !== '') {
                 $env[$key] = $value;
             }
         }
