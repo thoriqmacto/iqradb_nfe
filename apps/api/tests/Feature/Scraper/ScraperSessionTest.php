@@ -90,8 +90,48 @@ class ScraperSessionTest extends TestCase
 
             $this->assertStringNotContainsString(self::SECRET_COOKIE, $body);
             $this->assertStringNotContainsString('storage_state', $body);
-            $this->assertStringNotContainsString('cookies', $body);
+
+            // A `cookies` key does appear now — the renew-by summary. It must
+            // stay counts and dates: no name, no value, no domain.
+            $this->assertStringNotContainsString('ASP.NET_SessionId', $body);
+            $this->assertStringNotContainsString('chiyodanfe.ceccms.com/', $body);
+            $this->assertSame(
+                ['expires_at', 'first_expiry_at', 'cookies', 'persistent_cookies', 'session_cookies'],
+                array_keys((array) $response->json('session.cookies'))
+            );
         }
+    }
+
+    public function test_it_reports_when_the_stored_file_runs_out(): void
+    {
+        $user = User::factory()->create();
+        Sanctum::actingAs($user);
+
+        $expires = time() + 86400 * 14;
+
+        $this->postJson('/api/v1/scrapper/session', [
+            'storage_state' => json_encode([
+                'cookies' => [
+                    ['name' => 'ASP.NET_SessionId', 'value' => self::SECRET_COOKIE, 'expires' => -1],
+                    ['name' => 'ESTSAUTHPERSISTENT', 'value' => 'refresh', 'expires' => $expires],
+                ],
+                'origins' => [],
+            ]),
+        ])->assertCreated();
+
+        $response = $this->getJson('/api/v1/scrapper/session')->assertOk();
+
+        $this->assertSame(
+            $expires,
+            strtotime((string) $response->json('session.cookies.expires_at'))
+        );
+        $this->assertSame(1, $response->json('session.cookies.persistent_cookies'));
+        $this->assertSame(1, $response->json('session.cookies.session_cookies'));
+
+        // The summary must not become a side channel for the blob it describes.
+        $body = $response->getContent();
+        $this->assertStringNotContainsString(self::SECRET_COOKIE, (string) $body);
+        $this->assertStringNotContainsString('ESTSAUTHPERSISTENT', (string) $body);
     }
 
     public function test_model_serialisation_hides_the_storage_state(): void

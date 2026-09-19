@@ -136,15 +136,15 @@ export function RecipeForm({ recipe, onSaved, onCancel }: Props) {
                     onChange={(event) => setFileType(event.target.value)}
                     className="border-input dark:bg-input/30 h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
                 >
-                    <option value="csv">CSV — downloaded, parsed and staged</option>
-                    <option value="xlsx">XLSX — downloaded and stored only</option>
+                    <option value="csv">CSV — downloaded, parsed, staged and imported</option>
+                    <option value="xlsx">XLSX — downloaded, parsed, staged and imported</option>
                 </select>
-                {fileType !== "csv" && (
+                {fileType === "xlsx" && (
                     <p className="text-xs text-muted-foreground">
-                        Importing is only implemented for CSV. An XLSX recipe can still
-                        &ldquo;Run &amp; download&rdquo; — the file is captured and checksummed —
-                        but it cannot be parsed or staged. Pick CSV in the SCDB export wizard if
-                        that option is offered.
+                        The first worksheet is read. Dates come back as{" "}
+                        <code className="font-mono">YYYY-MM-DD</code>, and formula cells use the
+                        value SCDB saved with the file. Pick CSV in the SCDB export wizard when it
+                        is offered — there is less to go wrong.
                     </p>
                 )}
             </div>

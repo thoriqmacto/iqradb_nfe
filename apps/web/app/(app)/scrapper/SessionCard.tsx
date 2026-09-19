@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import useSWR from "swr";
 import { toast } from "sonner";
-import { ShieldAlert, ShieldCheck, Upload } from "lucide-react";
+import { CalendarClock, ShieldAlert, ShieldCheck, Upload } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,14 @@ import {
 } from "@/lib/scrapper/api";
 import type { ScrapperSession } from "@/lib/scrapper/types";
 
-import { formatTimestamp, sessionStatusLabel, sessionStatusVariant } from "./status";
+import {
+    RENEW_WARNING_DAYS,
+    expiryUrgency,
+    formatExpiry,
+    formatTimestamp,
+    sessionStatusLabel,
+    sessionStatusVariant,
+} from "./status";
 
 const CODEGEN_COMMAND =
     'npx playwright codegen --save-storage=scdb-auth.json "https://chiyodanfe.ceccms.com/Login.aspx?referrer"';
@@ -38,6 +45,8 @@ export function SessionCard() {
     const fileInput = useRef<HTMLInputElement>(null);
 
     const session = data?.session ?? null;
+    const expiresAt = session?.cookies?.expires_at ?? null;
+    const urgency = expiryUrgency(expiresAt);
 
     async function onFile(event: React.ChangeEvent<HTMLInputElement>) {
         const file = event.target.files?.[0];
@@ -137,13 +146,64 @@ export function SessionCard() {
                             {session?.last_validation_error ?? "—"}
                         </dd>
                     </div>
+                    <div className="flex items-center justify-between gap-2 border-b py-1.5">
+                        <dt className="flex shrink-0 items-center gap-1.5 text-muted-foreground">
+                            <CalendarClock className="size-3.5" />
+                            Renew by
+                        </dt>
+                        <dd
+                            className={
+                                urgency === "gone"
+                                    ? "font-medium text-destructive"
+                                    : urgency === "soon"
+                                      ? "font-medium text-amber-700 dark:text-amber-400"
+                                      : ""
+                            }
+                        >
+                            {session ? formatExpiry(expiresAt) : "—"}
+                        </dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 border-b py-1.5">
+                        <dt className="shrink-0 text-muted-foreground">Cookies in file</dt>
+                        <dd className="text-right text-xs text-muted-foreground">
+                            {session?.cookies
+                                ? `${session.cookies.persistent_cookies} dated, ${session.cookies.session_cookies} browser-session`
+                                : "—"}
+                        </dd>
+                    </div>
                 </dl>
 
                 {session?.status === "expired" && (
-                    <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-                        Session expired — SCDB redirected to the login page. Record a fresh
-                        authentication state and upload it again.
-                    </p>
+                    <Notice tone="warning">
+                        <strong>Session expired.</strong> SCDB redirected to the login page. Record a
+                        fresh <code className="font-mono">scdb-auth.json</code> on a trusted device
+                        and upload it again — the steps are below.
+                    </Notice>
+                )}
+
+                {session && session.status !== "expired" && urgency === "gone" && (
+                    <Notice tone="destructive">
+                        <strong>This authentication file has run out.</strong> Its last dated cookie
+                        expired on {formatExpiry(expiresAt)}, so nothing in it can sign in to SCDB any
+                        more. Record a fresh one and upload it.
+                    </Notice>
+                )}
+
+                {session && session.status !== "expired" && urgency === "soon" && (
+                    <Notice tone="warning">
+                        <strong>Renew soon.</strong> This file stops working{" "}
+                        {formatExpiry(expiresAt)} — under {RENEW_WARNING_DAYS} days away. Re-record it
+                        before then so scheduled runs do not start failing.
+                    </Notice>
+                )}
+
+                {session && session.cookies && session.cookies.persistent_cookies === 0 && (
+                    <Notice tone="warning">
+                        <strong>No dated cookies in this file.</strong> Everything in it dies with the
+                        browser that recorded it, so there is nothing to renew against — it will
+                        likely stop working as soon as that sign-in lapses. Re-record with the browser
+                        closed properly, as step 3 below describes.
+                    </Notice>
                 )}
 
                 <div className="flex flex-wrap gap-2">
@@ -195,6 +255,15 @@ export function SessionCard() {
                         <li>Close the browser. Playwright writes <code>scdb-auth.json</code>.</li>
                         <li>Upload that file here.</li>
                     </ol>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                        <strong>About &ldquo;Renew by&rdquo;.</strong> It is the last expiry date
+                        carried by any cookie in the file — an upper bound, not a guarantee. SCDB or
+                        your identity provider can end the session earlier (a password change or a
+                        policy update will do it), which is what <em>Validate session</em> checks.
+                        The short-lived SCDB cookie is re-minted automatically for as long as the
+                        dated sign-in cookies hold, which is why a file recorded days ago still
+                        works.
+                    </p>
                     <p className="mt-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-destructive">
                         <strong>scdb-auth.json contains authentication credentials and session
                         cookies.</strong> Never commit it to Git, attach it to a ticket, or share it.
@@ -205,4 +274,20 @@ export function SessionCard() {
             </CardContent>
         </Card>
     );
+}
+
+/** The card's inline banners, so tone stays consistent between them. */
+function Notice({
+    tone,
+    children,
+}: {
+    tone: "warning" | "destructive";
+    children: React.ReactNode;
+}) {
+    const className =
+        tone === "destructive"
+            ? "border-destructive/40 bg-destructive/5 text-destructive"
+            : "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200";
+
+    return <p className={`rounded-md border px-3 py-2 text-sm ${className}`}>{children}</p>;
 }

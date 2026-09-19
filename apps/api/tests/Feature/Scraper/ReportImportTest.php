@@ -7,17 +7,20 @@ use App\Models\ImportRow;
 use App\Models\ScraperRecipe;
 use App\Models\ScraperRun;
 use App\Models\User;
-use App\Services\Import\CsvImporter;
 use App\Services\Import\CsvReader;
 use App\Services\Import\ImportAdapterRegistry;
+use App\Services\Import\ReportImporter;
+use App\Services\Import\TabularReaderFactory;
+use App\Services\Import\XlsxReader;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\Support\FakeLoopAdapter;
 use Tests\TestCase;
+use ZipArchive;
 
-class CsvImportTest extends TestCase
+class ReportImportTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -51,7 +54,7 @@ class CsvImportTest extends TestCase
         parent::tearDown();
     }
 
-    private function importer(bool $withAdapter = true): CsvImporter
+    private function importer(bool $withAdapter = true): ReportImporter
     {
         $registry = new ImportAdapterRegistry;
 
@@ -59,7 +62,7 @@ class CsvImportTest extends TestCase
             $registry->register($this->adapter);
         }
 
-        return new CsvImporter(new CsvReader, $registry);
+        return new ReportImporter(new TabularReaderFactory(new CsvReader, new XlsxReader), $registry);
     }
 
     private function csv(string $contents): string
@@ -86,6 +89,74 @@ class CsvImportTest extends TestCase
         ]);
 
         return [$run, $recipe];
+    }
+
+    /**
+     * The same three columns as the CSV fixtures, as a real workbook.
+     *
+     * @param  list<array<int, string>>  $rows  header row first
+     */
+    private function xlsx(array $rows): string
+    {
+        $path = tempnam(sys_get_temp_dir(), 'import').'.xlsx';
+        $this->temporaryFiles[] = $path;
+
+        $sheet = '';
+
+        foreach ($rows as $r => $cells) {
+            $sheet .= '<row r="'.($r + 1).'">';
+
+            foreach ($cells as $c => $value) {
+                $sheet .= '<c r="'.chr(65 + $c).($r + 1).'" t="inlineStr"><is><t>'
+                    .htmlspecialchars($value, ENT_XML1).'</t></is></c>';
+            }
+
+            $sheet .= '</row>';
+        }
+
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('xl/workbook.xml',
+            '<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+            .'<sheets><sheet name="Report" r:id="rId1"/></sheets></workbook>');
+        $zip->addFromString('xl/_rels/workbook.xml.rels',
+            '<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>');
+        $zip->addFromString('xl/worksheets/sheet1.xml',
+            '<?xml version="1.0"?><worksheet><sheetData>'.$sheet.'</sheetData></worksheet>');
+        $zip->close();
+
+        return $path;
+    }
+
+    public function test_an_xlsx_report_stages_and_upserts_exactly_like_a_csv(): void
+    {
+        [$run, $recipe] = $this->makeRun();
+
+        $batch = $this->importer()->import($run, $recipe, $this->xlsx([
+            ['Loop No', 'Train', 'Status'],
+            ['L-001', 'Train-8', 'Complete'],
+            ['L-002', 'Train-9', 'Pending'],
+        ]), 'checksum-xlsx');
+
+        $this->assertSame(ImportBatchStatus::Completed, $batch->status);
+        $this->assertSame(2, $batch->total_rows);
+        $this->assertSame(2, $batch->inserted);
+        $this->assertSame(['Loop No', 'Train', 'Status'], $batch->headers);
+        $this->assertSame(2, DB::table(FakeLoopAdapter::TABLE)->count());
+    }
+
+    public function test_a_missing_required_header_fails_an_xlsx_batch_too(): void
+    {
+        [$run, $recipe] = $this->makeRun();
+
+        $batch = $this->importer()->import($run, $recipe, $this->xlsx([
+            ['Loop No', 'Status'],
+            ['L-001', 'Complete'],
+        ]), 'checksum-xlsx-bad');
+
+        $this->assertSame(ImportBatchStatus::Failed, $batch->status);
+        $this->assertStringContainsString('Train', (string) $batch->error_message);
+        $this->assertSame(0, DB::table(FakeLoopAdapter::TABLE)->count());
     }
 
     public function test_it_stages_and_upserts_rows(): void

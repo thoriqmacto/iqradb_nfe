@@ -5,6 +5,7 @@ import {
     assertAllowedUrl,
     isAllowedHost,
     looksLikeLogin,
+    safeTarget,
     safeUrl,
     UnsafeUrlError,
 } from "../src/urls.mjs";
@@ -145,5 +146,39 @@ describe("isAllowedHost", () => {
     it("is false for junk", () => {
         assert.equal(isAllowedHost("not a url", HOSTS), false);
         assert.equal(isAllowedHost("", HOSTS), false);
+    });
+});
+
+describe("safeTarget", () => {
+    it("keeps the query, because record ids live there", () => {
+        assert.equal(
+            safeTarget("https://chiyodanfe.ceccms.com/Report.aspx?docId=44821&rev=B"),
+            "https://chiyodanfe.ceccms.com/Report.aspx?docId=44821&rev=B",
+        );
+    });
+
+    it("redacts values whose parameter name looks like credential material", () => {
+        const target = safeTarget(
+            "https://chiyodanfe.ceccms.com/cb?code=abc&id_token=xyz&state=s&docId=7",
+        );
+
+        assert.ok(!target.includes("abc"), target);
+        assert.ok(!target.includes("xyz"), target);
+        assert.ok(target.includes("docId=7"), target);
+        // The parameter names survive — they say what the link is keyed on.
+        assert.ok(target.includes("code=%5Bredacted%5D"), target);
+    });
+
+    it("drops the fragment but keeps a relative href", () => {
+        assert.equal(safeTarget("../Detail.aspx?id=9#top"), "../Detail.aspx?id=9");
+    });
+
+    it("reduces a javascript: href to its scheme", () => {
+        assert.equal(safeTarget("javascript:__doPostBack('grid','sel$3')"), "javascript:\u2026");
+    });
+
+    it("is empty for nothing", () => {
+        assert.equal(safeTarget(null), "");
+        assert.equal(safeTarget("   "), "");
     });
 });

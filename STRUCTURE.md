@@ -204,14 +204,14 @@ Laravel talks to it over stdin, never argv — see `SCRAPPER.md`.
 ```
 apps/api/app/
 ├── Enums/{ScraperRunStatus,ScraperRunMode,ImportBatchStatus}.php
-├── Jobs/{RunScraperRecipe,ProcessScraperCsv}.php
+├── Jobs/{RunScraperRecipe,ProcessScraperReport}.php
 ├── Models/{ScraperSession,ScraperRecipe,ScraperRun,ImportBatch,ImportRow}.php
 ├── Policies/{ScraperRecipePolicy,ScraperRunPolicy}.php
 ├── Services/
-│   ├── Scraper/{ScdbUrlGuard,RecipeValidator,CodegenParser,
-│   │            ScraperProcessRunner,SessionValidator,RunPaths}.php
-│   └── Import/{CsvReader,CsvImporter,ScdbImportAdapter,
-│                ImportAdapterRegistry,ImportCounts}.php
+│   ├── Scraper/{ScdbUrlGuard,RecipeValidator,CodegenParser,ScraperProcessRunner,
+│   │            SessionValidator,StorageStateSummary,RunPaths}.php
+│   └── Import/{CsvReader,XlsxReader,TabularReaderFactory,ReportImporter,
+│                ScdbImportAdapter,ImportAdapterRegistry,ImportCounts}.php
 └── Http/Controllers/Api/V1/Scraper/{Session,Recipe,Run,Codegen}Controller.php
 ```
 

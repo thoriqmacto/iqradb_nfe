@@ -19,7 +19,7 @@ enum ScraperRunMode: string
         return $this !== self::TestNavigation;
     }
 
-    public function importsCsv(): bool
+    public function importsRows(): bool
     {
         return $this === self::Import;
     }

@@ -31,6 +31,7 @@ class ScraperRun extends Model
         'error_message',
         'failed_step_index',
         'failed_action',
+        'failure_diagnostics',
         'final_url',
         'screenshot_path',
         'trace_path',
@@ -44,6 +45,7 @@ class ScraperRun extends Model
             'started_at' => 'datetime',
             'finished_at' => 'datetime',
             'failed_action' => 'array',
+            'failure_diagnostics' => 'array',
         ];
     }
 

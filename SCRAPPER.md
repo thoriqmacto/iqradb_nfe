@@ -1,6 +1,6 @@
 # Scrapper — SCDB report automation
 
-Scrapper pulls CSV reports out of **SCDB / Smart Completions** (`https://chiyodanfe.ceccms.com`) for the NFE project. That system exposes no usable REST API, so retrieval is browser automation: Playwright driving headless Chromium, on the VPS, from a Laravel queue.
+Scrapper pulls CSV and XLSX reports out of **SCDB / Smart Completions** (`https://chiyodanfe.ceccms.com`) for the NFE project. That system exposes no usable REST API, so retrieval is browser automation: Playwright driving headless Chromium, on the VPS, from a Laravel queue.
 
 The `/scrapper` page and the "Scrapper" menu label use that spelling because it is the name the app ships with. Everything internal — classes, jobs, tables, config, the workspace — uses standard English `scraper`.
 
@@ -26,9 +26,9 @@ Scrapper page          POST     Laravel API  ──dispatch──▶  scraper qu
                                                               ▼
                                         storage/app/private/scraper/runs/{uuid}/
                                                               │
-                                              Laravel job: ProcessScraperCsv
+                                            Laravel job: ProcessScraperReport
                                                               ▼
-                                        CSV parse → staging rows → adapter upsert
+                                      report parse → staging rows → adapter upsert
 ```
 
 Boundaries are deliberate and should stay that way:
@@ -37,11 +37,11 @@ Boundaries are deliberate and should stay that way:
 |---|---|
 | Browser automation | `apps/scraper` (Node + Playwright) |
 | Run orchestration, locking, state | `app/Jobs/`, `app/Enums/ScraperRunStatus.php` |
-| CSV parsing | `app/Services/Import/CsvReader.php` |
+| Report parsing | `app/Services/Import/CsvReader.php`, `XlsxReader.php` (chosen by `TabularReaderFactory`) |
 | Domain mapping + upsert | `ScdbImportAdapter` implementations |
 | UI | `apps/web/app/(app)/scrapper/` |
 
-The Node worker's only job is to drive the browser and capture a file. It does not parse CSVs — Laravel owns import logic.
+The Node worker's only job is to drive the browser and capture a file. It does not parse reports — Laravel owns import logic.
 
 ---
 
@@ -192,7 +192,7 @@ Mark the export step as the download step — press **Make download** on it. Cod
 ### 5. Run it
 
 - **Test navigation** — walks the steps, no download. Fastest way to check selectors.
-- **Run & download** — captures the CSV and stores it with a checksum.
+- **Run & download** — captures the file and stores it with a checksum.
 - **Run, download & import** — the above, then parse, stage, and upsert.
 
 Runs are queued, so the button returns immediately and the history table below polls for progress.
@@ -202,7 +202,7 @@ Runs are queued, so the button returns immediately and the history table below p
 ## Import pipeline
 
 ```
-downloaded CSV → validate file → parse headers → stage rows
+downloaded file → validate file → parse headers → stage rows
               → adapter? ─── no ──▶ status: ready_for_mapping
                         └── yes ──▶ normalize → validate → chunked transactional upsert
 ```
@@ -216,12 +216,7 @@ To add one when a real model lands:
 
 Nothing else changes — the pipeline picks it up by `datasetKey()`.
 
-Guarantees the importer already provides, all covered by `tests/Feature/Scraper/CsvImportTest.php`:
-
-> **CSV only.** Staging and upsert are built on CSV. A recipe whose export
-> format is `xlsx` can still *download* — the file is captured, checksummed and
-> stored — but "Run, download & import" is refused up front rather than failing
-> inside the parser. If SCDB's export wizard offers a CSV format, choose it.
+Guarantees the importer already provides, all covered by `tests/Feature/Scraper/ReportImportTest.php`:
 
 - **Idempotent.** Re-importing identical data reports `unchanged`, not duplicates.
 - **Transactional.** An adapter throwing mid-chunk rolls the chunk back; staged rows survive for diagnosis.
@@ -229,7 +224,15 @@ Guarantees the importer already provides, all covered by `tests/Feature/Scraper/
 - **Skips repeats.** The same checksum + dataset is skipped unless re-import is forced.
 - **Auditable.** Source filename, checksum, headers, mapping version and every verbatim row are kept.
 
+### Formats
+
+CSV and XLSX both parse, stage and import. `TabularReaderFactory` picks the reader by extension, and nothing downstream knows which one it got — header normalisation and row alignment are shared, so the two formats name blank columns, disambiguate duplicates and report short or long rows identically. A recipe whose `expected_file_type` has no reader is refused when the run is queued, not halfway through parsing.
+
 CSV parsing handles UTF-8 BOM, quoted commas, quoted newlines, escaped quotes, CRLF, duplicate headers (disambiguated), blank headers, empty values, and short/long rows (reported, not silently zipped).
+
+XLSX parsing is hand-rolled on `ext-zip` + `ext-xmlreader` — a spreadsheet library would bring styling, formulas, charts and writing for a job that needs none of it, and the repo's rule is to add a runtime package only when it is genuinely necessary. It reads the first worksheet in workbook order (following the relationship, not guessing `sheet1.xml`), shared strings including rich-text runs, inline strings, booleans, numbers, formula results, and date-formatted cells (converted from Excel serials to `YYYY-MM-DD`). Cell gaps are preserved: `<c r="C1">` after `A1` leaves `B1` empty rather than shifting later columns left.
+
+Both readers treat the file as untrusted input — it came from a legacy web app over a browser session. The XLSX path never substitutes external entities, never touches the network (`LIBXML_NONET`), and rejects an archive whose declared uncompressed size is far beyond the download limit. It streams throughout, so a large report never lands in memory as a DOM. `tests/Unit/Import/XlsxReaderTest.php` builds every fixture as a real zip, so what the reader claims to support stays readable in the diff.
 
 ---
 

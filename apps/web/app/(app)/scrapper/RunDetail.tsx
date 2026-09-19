@@ -16,6 +16,7 @@ import { RUNS_KEY, fetchPreview, fetchRun } from "@/lib/scrapper/api";
 import type { Preview, Run } from "@/lib/scrapper/types";
 
 import { describeAction } from "./ActionList";
+import { FailureDiagnostics } from "./FailureDiagnostics";
 import { formatBytes, formatDuration, formatTimestamp, runStatusVariant } from "./status";
 
 export function RunDetail({ runId }: { runId: string }) {
@@ -70,6 +71,12 @@ export function RunDetail({ runId }: { runId: string }) {
                             Failing step: <code>{describeAction(run.failed_action)}</code>
                         </p>
                     )}
+                    {run.failure_diagnostics && (
+                        <FailureDiagnostics
+                            diagnostics={run.failure_diagnostics}
+                            failedAction={run.failed_action}
+                        />
+                    )}
                     {(run.has_screenshot || run.has_trace) && (
                         <p className="flex flex-wrap gap-3 text-xs text-muted-foreground">
                             {run.has_screenshot && (
@@ -117,7 +124,7 @@ export function RunDetail({ runId }: { runId: string }) {
             {preview && preview.headers.length > 0 && (
                 <div className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-baseline gap-2">
-                        <h4 className="text-sm font-medium">CSV preview</h4>
+                        <h4 className="text-sm font-medium">Report preview</h4>
                         <span className="text-xs text-muted-foreground">
                             {preview.headers.length} column(s)
                             {preview.total_rows !== null && `, ${preview.total_rows} row(s)`} —

@@ -5,22 +5,23 @@ namespace App\Jobs;
 use App\Enums\ImportBatchStatus;
 use App\Enums\ScraperRunStatus;
 use App\Models\ScraperRun;
-use App\Services\Import\CsvImporter;
-use App\Services\Import\CsvReadException;
+use App\Services\Import\ReportImporter;
+use App\Services\Import\ReportReadException;
+use App\Services\Import\TabularReaderFactory;
 use App\Services\Scraper\RunPaths;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Throwable;
 
 /**
- * Turns a downloaded CSV into staged rows and, when an adapter exists for the
- * dataset, an idempotent upsert.
+ * Turns a downloaded report into staged rows and, when an adapter exists for
+ * the dataset, an idempotent upsert.
  *
  * Split from RunScraperRecipe on purpose: browser automation and data import
  * fail for completely different reasons, and keeping them separate means a
  * parsing bug never costs a fresh SCDB round trip to retry.
  */
-class ProcessScraperCsv implements ShouldQueue
+class ProcessScraperReport implements ShouldQueue
 {
     use Queueable;
 
@@ -33,7 +34,7 @@ class ProcessScraperCsv implements ShouldQueue
         $this->onQueue((string) config('scraper.queue', 'scraper'));
     }
 
-    public function handle(CsvImporter $importer, RunPaths $paths): void
+    public function handle(ReportImporter $importer, RunPaths $paths): void
     {
         $run = ScraperRun::with('recipe')->where('uuid', $this->runUuid)->first();
 
@@ -80,8 +81,8 @@ class ProcessScraperCsv implements ShouldQueue
 
             $run->transitionTo(ScraperRunStatus::Completed);
             $recipe->forceFill(['last_success_run_at' => now()])->save();
-        } catch (CsvReadException $e) {
-            $this->fail($run, 'bad_csv', $e->getMessage());
+        } catch (ReportReadException $e) {
+            $this->fail($run, 'bad_report', $e->getMessage());
         } catch (Throwable $e) {
             $this->fail($run, 'import_exception', mb_substr($e->getMessage(), 0, 1000));
         }
@@ -91,24 +92,24 @@ class ProcessScraperCsv implements ShouldQueue
      * Guard the file before handing it to the parser: SCDB is a legacy app and
      * an error page saved as "report.csv" is a realistic failure mode.
      *
-     * @throws CsvReadException
+     * @throws ReportReadException
      */
     private function assertUsableFile(string $path, string $expectedExtension): void
     {
         if (! is_file($path)) {
-            throw new CsvReadException('The downloaded file is missing from storage.');
+            throw new ReportReadException('The downloaded file is missing from storage.');
         }
 
         $size = filesize($path);
 
         if ($size === false || $size === 0) {
-            throw new CsvReadException('The downloaded file is empty.');
+            throw new ReportReadException('The downloaded file is empty.');
         }
 
         $max = (int) config('scraper.max_download_bytes');
 
         if ($max > 0 && $size > $max) {
-            throw new CsvReadException(sprintf(
+            throw new ReportReadException(sprintf(
                 'The downloaded file is %d bytes, larger than the %d byte limit.',
                 $size,
                 $max
@@ -118,10 +119,18 @@ class ProcessScraperCsv implements ShouldQueue
         $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
 
         if ($extension !== strtolower($expectedExtension)) {
-            throw new CsvReadException(sprintf(
+            throw new ReportReadException(sprintf(
                 'Expected a .%s file but SCDB returned .%s.',
                 $expectedExtension,
                 $extension === '' ? '(none)' : $extension
+            ));
+        }
+
+        if (! TabularReaderFactory::supports($extension)) {
+            throw new ReportReadException(sprintf(
+                'No reader for .%s files. Importable formats are: %s.',
+                $extension === '' ? '(none)' : $extension,
+                implode(', ', TabularReaderFactory::IMPORTABLE),
             ));
         }
     }

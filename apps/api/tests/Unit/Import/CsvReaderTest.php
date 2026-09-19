@@ -3,7 +3,7 @@
 namespace Tests\Unit\Import;
 
 use App\Services\Import\CsvReader;
-use App\Services\Import\CsvReadException;
+use App\Services\Import\ReportReadException;
 use Tests\TestCase;
 
 class CsvReaderTest extends TestCase
@@ -155,13 +155,13 @@ class CsvReaderTest extends TestCase
 
     public function test_it_rejects_an_empty_file(): void
     {
-        $this->expectException(CsvReadException::class);
+        $this->expectException(ReportReadException::class);
         $this->reader->headers($this->csv(''));
     }
 
     public function test_it_rejects_a_missing_file(): void
     {
-        $this->expectException(CsvReadException::class);
+        $this->expectException(ReportReadException::class);
         $this->reader->headers('/nonexistent/report.csv');
     }
 
