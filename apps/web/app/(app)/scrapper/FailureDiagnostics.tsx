@@ -74,8 +74,51 @@ export function FailureDiagnostics({ diagnostics, failedAction }: Props) {
 /** One-line reading of the inventory, so the user does not have to interpret it. */
 function Verdict({ diagnostics, wantedRole }: { diagnostics: Diagnostics; wantedRole?: string }) {
     const frames = diagnostics.frames ?? [];
+    const probe = diagnostics.filterText;
 
     if (frames.length === 0) return null;
+
+    // The filter-text probe answers the question outright when there is one:
+    // `.filter({ hasText })` and getByText match identically, so "present but
+    // the filter failed" and "not on the page" are different bugs.
+    if (probe) {
+        if (!probe.foundAnywhere) {
+            return (
+                <Hint>
+                    <strong>
+                        &ldquo;{probe.text}&rdquo; was nowhere on the page — not in any frame, under
+                        any role.
+                    </strong>{" "}
+                    So this is not a locator problem. Either the search that produces this row had
+                    not run or had not finished rendering when the step fired, or the text differs
+                    from what was recorded. Add a wait before this step, then check the row text in
+                    the hyperlink list below for the exact wording.
+                </Hint>
+            );
+        }
+
+        const where = probe.matches
+            .filter((match) => match.count > 0)
+            .map((match) => (match.frame === 0 ? "the main frame" : `frame ${match.frame}`))
+            .join(" and ");
+
+        return (
+            <Hint>
+                <strong>&ldquo;{probe.text}&rdquo; is on the page</strong> ({where}), but not inside
+                an element this step could match
+                {wantedRole && (
+                    <>
+                        {" "}
+                        — nothing with <code className="font-mono">role={wantedRole}</code> contains
+                        it
+                    </>
+                )}
+                . Target the row or its link directly instead: find it in the hyperlink list below
+                and use a <code className="font-mono">css</code> selector on its{" "}
+                <code className="font-mono">href</code> or <code className="font-mono">id</code>.
+            </Hint>
+        );
+    }
 
     const main = frames[0];
     const others = frames.slice(1);
@@ -111,8 +154,7 @@ function Verdict({ diagnostics, wantedRole }: { diagnostics: Diagnostics; wanted
         return (
             <Hint>
                 Found {inMain} <code className="font-mono">role={wantedRole}</code> element(s), so the
-                role is right and the filter text is what did not match. Compare the samples below
-                with the text this step is filtering on.
+                role is right. Compare the samples below with what this step is looking for.
             </Hint>
         );
     }
@@ -192,13 +234,25 @@ function FrameReport({
                     {showLinks && (
                         <ul className="flex flex-col gap-1 font-mono text-[11px] leading-tight">
                             {links.map((link, i) => (
-                                <li key={i} className="min-w-0 truncate">
-                                    {link.id && (
-                                        <span className="text-muted-foreground">#{link.id} </span>
-                                    )}
-                                    <span>{link.text || "(no text)"}</span>
-                                    {link.href && (
-                                        <span className="text-muted-foreground"> → {link.href}</span>
+                                <li key={i} className="min-w-0">
+                                    <p className="truncate">
+                                        {link.id && (
+                                            <span className="text-muted-foreground">#{link.id} </span>
+                                        )}
+                                        <span>
+                                            {link.text || link.title || link.label || "(no text)"}
+                                        </span>
+                                        {link.href && (
+                                            <span className="text-muted-foreground">
+                                                {" "}
+                                                → {link.href}
+                                            </span>
+                                        )}
+                                    </p>
+                                    {link.row && (
+                                        <p className="truncate pl-3 text-muted-foreground">
+                                            in row: {link.row}
+                                        </p>
                                     )}
                                 </li>
                             ))}

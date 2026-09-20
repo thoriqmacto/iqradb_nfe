@@ -15,9 +15,18 @@
  * (`blocked_url`, `invalid_recipe`) rather than a module-resolution crash, both
  * in CI and on a half-configured server.
  */
-async function loadChromium() {
+async function loadChromium(testIdAttribute) {
     try {
-        const { chromium } = await import("playwright-core");
+        const { chromium, selectors } = await import("playwright-core");
+
+        // Legacy ASP.NET has no data-testid, so a deployment can point test ids
+        // at `id` instead and record with `codegen --test-id-attribute=id`.
+        // Without this the recorded getByTestId() would resolve against
+        // data-testid and never match anything.
+        if (typeof testIdAttribute === "string" && testIdAttribute !== "") {
+            selectors.setTestIdAttribute(testIdAttribute);
+        }
+
         return chromium;
     } catch (error) {
         const hint =
@@ -37,9 +46,10 @@ export async function withBrowserContext(options, callback) {
         navigationTimeoutMs = 30000,
         actionTimeoutMs = 15000,
         executablePath,
+        testIdAttribute,
     } = options;
 
-    const chromium = await loadChromium();
+    const chromium = await loadChromium(testIdAttribute);
 
     const browser = await chromium.launch({
         headless: true,

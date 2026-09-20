@@ -65,6 +65,17 @@ return [
 
     'chromium_executable' => env('PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH'),
 
+    /*
+    | Which attribute `getByTestId` resolves against.
+    |
+    | SCDB is legacy ASP.NET with no `data-testid` anywhere, but it does give
+    | almost every control a stable `id`. Recording with
+    | `codegen --test-id-attribute=id` makes Codegen emit getByTestId('thatId')
+    | instead of a brittle role-and-name guess — but only works if the runner
+    | resolves test ids the same way, which is what this sets.
+    */
+    'test_id_attribute' => (string) env('SCRAPER_TEST_ID_ATTRIBUTE', 'data-testid'),
+
     'timeout_seconds' => (int) env('SCRAPER_TIMEOUT_SECONDS', 300),
 
     'navigation_timeout_ms' => (int) env('SCRAPER_NAVIGATION_TIMEOUT_MS', 30000),

@@ -113,6 +113,7 @@ class RunScraperRecipe implements ShouldQueue
                 'loginMarkers' => (array) config('scraper.login_markers'),
                 'navigationTimeoutMs' => (int) config('scraper.navigation_timeout_ms'),
                 'actionTimeoutMs' => (int) config('scraper.action_timeout_ms'),
+                'testIdAttribute' => (string) config('scraper.test_id_attribute'),
                 'maxDownloadBytes' => (int) config('scraper.max_download_bytes'),
                 'expectedExtension' => $recipe->expected_file_type,
             ]);
