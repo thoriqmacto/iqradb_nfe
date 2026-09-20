@@ -168,20 +168,63 @@ A green *Connected* badge means SCDB accepted it. *Expired* means re-record from
 
 ### 3. Record a report
 
-With the same Codegen session, navigate the report you want and export it:
+With the same Codegen session, navigate the report you want and export it. Record
+with `--test-id-attribute=id`:
 
 ```bash
-npx playwright codegen --load-storage=scdb-auth.json "https://chiyodanfe.ceccms.com/"
+npx playwright codegen --load-storage=scdb-auth.json \
+  --test-id-attribute=id "https://chiyodanfe.ceccms.com/"
 ```
 
-Click through to the report, set any filters, and click Export. Codegen prints statements like:
+Click through to the report, set any filters, and click Export. Codegen prints
+statements like:
 
 ```js
-await page.getByRole('link', { name: 'Reports' }).click();
-await page.getByText('Loop Index').click();
+await page.getByTestId('vExports_ActionButtonbtnNew').click();
 await page.getByLabel('Train').selectOption('Train-8');
 await page.getByRole('button', { name: 'Export' }).click();
 ```
+
+#### Why `--test-id-attribute=id`
+
+Codegen prefers user-facing locators — `getByRole`, `getByText` — because in a
+modern app they survive redesigns. SCDB is not a modern app. It is legacy
+ASP.NET: roles come from generated markup rather than deliberate ARIA, visible
+text moves between cells, and grids repaint on postback. A role-and-name guess
+against that is brittle, and it fails in the least helpful way — a timeout that
+cannot say whether the control moved, renamed itself, or simply had not
+rendered yet.
+
+What SCDB *does* have is stable server-generated ids on nearly every control:
+`vExportsSearch`, `vExports_ActionButtonbtnNew`, `vExports_ListsTabLabel`. The
+flag points Codegen's test-id support at the `id` attribute, so it emits
+`getByTestId('thatId')` in preference to a role guess.
+
+For the runner to resolve those the same way, set the matching key on the API:
+
+```dotenv
+SCRAPER_TEST_ID_ATTRIBUTE=id
+```
+
+Leave it at `data-testid` and every recorded `getByTestId()` silently matches
+nothing — the attribute the runner searches would not be the one Codegen
+recorded against.
+
+#### When a row has no stable id
+
+Grid rows usually do not have ids; their action links do, or their `href`
+carries the record key. Use **Pick locator** in the Codegen inspector to read
+the element, then write the selector by hand:
+
+```js
+await page.locator('a[href*="Mode=RunExport"][href*="ExportID=1549"]').click();
+```
+
+`page.locator('…')` converts to a `css` step, which the runner supports. This is
+the sturdiest option available for a legacy grid: it depends on neither visible
+text nor generated roles, only on the record identity in the URL. The failure
+panel lists every hyperlink with its `href`, `id` and the text of the row it
+sits in, so the identifier can be read off a failed run rather than guessed.
 
 ### 4. Turn them into a recipe
 

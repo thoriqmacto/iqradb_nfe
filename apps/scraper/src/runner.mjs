@@ -57,9 +57,9 @@ const DIAGNOSTIC_ROLES = [
 ];
 
 const MAX_PER_ROLE = 12;
-const MAX_LINKS = 25;
+const MAX_LINKS = 40;
 const MAX_FRAMES = 6;
-const MAX_LABEL = 120;
+const MAX_LABEL = 160;
 
 /**
  * Enumerate one frame: which roles it exposes, and what its hyperlinks point at.
@@ -109,17 +109,30 @@ async function inventoryFrame(frame, wantedRole) {
         report.links = [];
 
         for (const anchor of anchors.slice(0, MAX_LINKS)) {
-            const [text, href, id] = await Promise.all([
+            const [text, href, id, title, label] = await Promise.all([
                 anchor.innerText().catch(() => ""),
                 anchor.getAttribute("href").catch(() => null),
                 anchor.getAttribute("id").catch(() => null),
+                anchor.getAttribute("title").catch(() => null),
+                anchor.getAttribute("aria-label").catch(() => null),
             ]);
 
+            // A grid action link is usually an icon with no text of its own.
+            // Its row says what record it belongs to, which is the thing a
+            // human needs in order to pick the right href.
+            const row = await anchor
+                .locator("xpath=ancestor::tr[1]")
+                .innerText()
+                .catch(() => "");
+
             report.links.push({
-                text: String(text).replace(/\s+/g, " ").trim().slice(0, MAX_LABEL),
+                text: clean(text),
                 // Keeps record ids, redacts anything credential-shaped.
                 href: safeTarget(href),
-                ...(id ? { id: id.slice(0, MAX_LABEL) } : {}),
+                ...(id ? { id: clean(id) } : {}),
+                ...(title ? { title: clean(title) } : {}),
+                ...(label ? { label: clean(label) } : {}),
+                ...(row ? { row: clean(row) } : {}),
             });
         }
     } catch {
@@ -127,6 +140,42 @@ async function inventoryFrame(frame, wantedRole) {
     }
 
     return report;
+}
+
+function clean(value) {
+    return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, MAX_LABEL);
+}
+
+/**
+ * Was the filter text anywhere on the page at all?
+ *
+ * `.filter({ hasText })` and `getByText()` match the same way — case-insensitive
+ * substring, whitespace normalised — so comparing the two separates the only
+ * two things a failed filter can mean:
+ *
+ *   present, but not inside an element of the role the step asked for
+ *       -> the role is wrong; target the row or link directly
+ *   absent
+ *       -> the page never showed it: a search that did not run, results that
+ *          had not loaded, or wording that differs from the recording
+ */
+async function probeFilterText(frames, hasText) {
+    const probe = { text: hasText, matches: [] };
+
+    for (const [index, frame] of frames.slice(0, MAX_FRAMES).entries()) {
+        try {
+            probe.matches.push({
+                frame: index,
+                count: await frame.getByText(hasText).count(),
+            });
+        } catch {
+            // Detached frame; the other frames still answer the question.
+        }
+    }
+
+    probe.foundAnywhere = probe.matches.some((match) => match.count > 0);
+
+    return probe;
 }
 
 /**
@@ -165,6 +214,16 @@ async function captureFailureDiagnostics(page, action) {
 
     diagnostics.frameCount = frames.length;
     diagnostics.frames = [];
+
+    const hasText = action?.locator?.hasText;
+
+    if (typeof hasText === "string" && hasText !== "") {
+        try {
+            diagnostics.filterText = await probeFilterText(frames, hasText);
+        } catch {
+            // Never let a diagnostic replace the real error.
+        }
+    }
 
     for (const frame of frames.slice(0, MAX_FRAMES)) {
         try {
@@ -208,6 +267,7 @@ export async function runRecipe(input) {
         actionTimeoutMs = 15000,
         maxDownloadBytes = 67108864,
         expectedExtension = "csv",
+        testIdAttribute,
     } = input;
 
     // Validate before launching anything: a bad recipe should not cost a browser.
@@ -222,6 +282,7 @@ export async function runRecipe(input) {
             acceptDownloads: mode !== "test_navigation",
             navigationTimeoutMs,
             actionTimeoutMs,
+            testIdAttribute,
             executablePath: executablePathFromEnv(),
         },
         async ({ page }) => {

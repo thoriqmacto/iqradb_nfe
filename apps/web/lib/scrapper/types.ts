@@ -130,6 +130,17 @@ export type DiagnosticLink = {
     /** Query values that look like credentials are redacted worker-side. */
     href: string;
     id?: string;
+    title?: string;
+    label?: string;
+    /** Text of the table row this link sits in — what record it acts on. */
+    row?: string;
+};
+
+/** Where the failing step's filter text actually appeared, if anywhere. */
+export type DiagnosticFilterText = {
+    text: string;
+    matches: { frame: number; count: number }[];
+    foundAnywhere: boolean;
 };
 
 export type DiagnosticFrame = {
@@ -152,6 +163,7 @@ export type FailureDiagnostics = {
     title?: string;
     frameCount?: number;
     frames?: DiagnosticFrame[];
+    filterText?: DiagnosticFilterText;
 };
 
 export type Run = {
