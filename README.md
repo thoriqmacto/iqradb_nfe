@@ -343,6 +343,61 @@ php artisan config:cache
 
 ---
 
+### Moving to a custom domain
+
+Everything that knows the frontend's address lives in two places — Vercel's
+domain settings and three keys in the API's `.env` — so a move is ordering,
+not code. Do it in this order and the old URL keeps working until you retire
+it.
+
+1. **Allow the new origin on the API first.** Adding an origin is harmless
+   before DNS points anywhere, and doing it first means the new domain works
+   the moment it resolves:
+
+   ```dotenv
+   CORS_ALLOWED_ORIGINS=https://new.example,https://old.vercel.app
+   ```
+
+   Then `php artisan config:cache`. List origins exactly; do not reach for
+   `CORS_ALLOWED_ORIGIN_PATTERNS` to save typing.
+
+2. **Add the domain in Vercel** (Settings → Domains). Add the apex and `www`,
+   and let `www` redirect to the apex. Create the DNS records Vercel shows —
+   use its values, not ones copied from a guide, since they vary by project.
+   Remove any parking records the registrar added, and if the domain has CAA
+   records, they must allow Let's Encrypt or the certificate never issues.
+
+3. **Wait for "Valid Configuration" and a certificate**, then sign in on the
+   new domain and exercise it.
+
+4. **Point email links at it:**
+
+   ```dotenv
+   FRONTEND_URL=https://new.example
+   ```
+
+   Then `php artisan config:cache`, and send yourself a password reset to
+   confirm the link.
+
+5. **Retire the old address.** In Vercel, edit the `*.vercel.app` domain and
+   redirect it to the new one. Once traffic has moved, drop it from
+   `CORS_ALLOWED_ORIGINS`.
+
+Two things to expect:
+
+- **Everyone signs in once more.** In bearer mode the token is in
+  `localStorage`, which belongs to one origin. The new domain starts with none.
+- **`NEXT_PUBLIC_*` variables are baked in at build time.** If you move the API
+  too, changing `NEXT_PUBLIC_API_BASE_URL` in Vercel does nothing until you
+  redeploy. Move the API as a separate step, not alongside the frontend.
+
+> `FRONTEND_URL` is read through `config('app.frontend_url')`. Reading it with
+> `env()` at the call site — as this repo once did — works in development and
+> silently breaks in production: under `php artisan config:cache` the `.env`
+> file is never loaded, so every reset and verification link pointed at
+> `http://localhost:3000`. Any new setting read outside `config/` must go
+> through `config()` for the same reason.
+
 ## Troubleshooting
 
 - **CORS errors in the browser.** Your web origin needs to be in `CORS_ALLOWED_ORIGINS` on the API. Re-run `npm run setup:env` and restart `php artisan serve`.

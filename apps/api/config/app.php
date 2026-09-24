@@ -56,6 +56,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend URL
+    |--------------------------------------------------------------------------
+    |
+    | Where the Next.js app is served. Password-reset links and the redirect
+    | after email verification are built from this.
+    |
+    | Read it through config('app.frontend_url'), never env(): production runs
+    | `php artisan config:cache`, after which .env is not loaded at all and an
+    | env() call anywhere outside config/ returns its default. The links then
+    | pointed at http://localhost:3000 no matter what .env said.
+    |
+    */
+
+    'frontend_url' => rtrim((string) env('FRONTEND_URL', 'http://localhost:3000'), '/'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

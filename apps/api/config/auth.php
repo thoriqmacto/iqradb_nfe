@@ -114,4 +114,19 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Login throttle and verification links
+    |--------------------------------------------------------------------------
+    |
+    | Declared here rather than read with env() at the call site, for the same
+    | reason as app.frontend_url: under a config cache those env() calls return
+    | their defaults and the .env values are silently ignored.
+    |
+    */
+
+    'throttle_per_minute' => (int) env('AUTH_THROTTLE_PER_MINUTE', 10),
+
+    'verification_link_ttl_minutes' => (int) env('VERIFICATION_LINK_TTL_MINUTES', 60),
+
 ];
