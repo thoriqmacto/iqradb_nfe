@@ -2,7 +2,6 @@
 
 namespace Tests\Feature\Auth;
 
-use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\TestCase;
@@ -18,19 +17,17 @@ class ThrottleTest extends TestCase
         RateLimiter::clear('auth');
     }
 
-    public function test_login_is_throttled_after_too_many_attempts(): void
+    /**
+     * Drives the limiter AppServiceProvider registers, not a stand-in.
+     *
+     * The limit is read from config('auth.throttle_per_minute') on each
+     * request, so setting it here exercises the real wiring — including the
+     * part that broke in production, where the limit used to come from an
+     * env() call that a config cache silently reduces to its default.
+     */
+    public function test_login_is_throttled_at_the_configured_limit(): void
     {
-        config(['app.auth_throttle_per_minute' => 3]);
-        // The rate limiter reads env via the AppServiceProvider closure, which
-        // defaults to env('AUTH_THROTTLE_PER_MINUTE', 10). Override via the
-        // env() helper for this test.
-        putenv('AUTH_THROTTLE_PER_MINUTE=3');
-
-        // Re-register the limiter using the new limit so it picks up the env.
-        RateLimiter::for('auth', function ($request) {
-            return Limit::perMinute(3)
-                ->by((string) ($request->user()?->getAuthIdentifier() ?: $request->ip()));
-        });
+        config(['auth.throttle_per_minute' => 3]);
 
         for ($i = 0; $i < 3; $i++) {
             $this->postJson('/api/v1/login', [

@@ -45,6 +45,7 @@ The shipped baseline must always keep working: public `/` → `/login` or `/regi
 - Don't add Next.js `rewrites()`. The same-origin proxy at `app/api/[...path]/route.ts` is the server-side path.
 - Don't couple dashboard/auth code to domain-specific models (users is fine; any app-specific resource is not).
 - Don't commit generated files from `bootstrap/cache/` or `storage/**/` — the nested `.gitignore` files there take care of that.
+- Don't call `env()` outside `apps/api/config/`. Production runs `config:cache`, after which `.env` is never loaded and those calls return their defaults — silently. Declare the key in a config file and read it with `config()`.
 
 ## Where to put new code
 
